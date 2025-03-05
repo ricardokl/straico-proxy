@@ -37,15 +37,16 @@ struct OpenAiRequest<'a> {
     /// Controls randomness in the response generation (0.0 to 1.0)
     temperature: Option<f32>,
     /// Whether to stream the response
-    #[serde(default = "default_streaming")]
+    //#[serde(default = "default_streaming")]
+    #[serde(default)]
     stream: bool,
     /// List of tools/functions available to the model during completion
     tools: Option<Vec<Tool>>,
 }
 
-fn default_streaming() -> bool {
-    true
-}
+//fn default_streaming() -> bool {
+//    true
+//}
 
 impl<'a> From<OpenAiRequest<'a>> for CompletionRequest<'a> {
     /// Converts an OpenAI-style chat completion request into a CompletionRequest
@@ -343,7 +344,6 @@ async fn openai_completion<'a>(
     let response = client
         .completion()
         .bearer_auth(&data.key)
-        // .json(req_inner)
         .json(req_inner_oa)
         .send()
         .await
