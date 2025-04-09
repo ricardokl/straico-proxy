@@ -3,7 +3,7 @@ use straico_client::endpoints::completion::completion_response::{
     Choice, Completion, Message, ToolCall, Usage,
 };
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct CompletionStream {
     pub choices: Vec<ChoiceStream>,
     pub object: Box<str>,
@@ -13,14 +13,14 @@ pub struct CompletionStream {
     pub usage: Usage,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct ChoiceStream {
     pub index: u8,
     pub delta: Delta,
     pub finish_reason: Option<Box<str>>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone, Default)]
 pub struct Delta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub role: Option<Box<str>>,
@@ -30,61 +30,80 @@ pub struct Delta {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
-pub struct DeltaIterator<T, I, U> {
-    pub role: T,
-    pub content: Option<I>,
-    pub tool_calls: Option<U>,
+// State enum to track progress through the delta
+#[derive(Debug, PartialEq)]
+enum DeltaState {
+    Role,
+    Content,
+    ToolCalls,
+    Done,
 }
 
-pub struct ChoiceStreamIterator<T, I, U> {
-    pub index: u8,
-    pub delta: DeltaIterator<T, I, U>,
-    pub finish_reason: Option<Box<str>>,
+pub struct DeltaIterator {
+    state: DeltaState,
+    role: Option<Box<str>>,
+    content_chunks: Vec<Box<str>>,
+    content_index: usize,
+    tool_calls: Option<Vec<ToolCall>>,
 }
 
-pub struct CompletionStreamIterator<T, I, U> {
-    pub choices: Vec<ChoiceStreamIterator<T, I, U>>,
-    pub object: Box<str>,
-    pub id: Box<str>,
-    pub model: Box<str>,
-    pub created: u64,
-    pub usage: Usage,
+pub struct ChoiceStreamIterator {
+    index: u8,
+    delta_iter: DeltaIterator,
+    finish_reason: Option<Box<str>>,
+}
+
+pub struct CompletionStreamIterator {
+    choices: Vec<ChoiceStreamIterator>,
+    object: Box<str>,
+    id: Box<str>,
+    model: Box<str>,
+    created: u64,
+    usage: Usage,
+    done: bool,
 }
 
 impl IntoIterator for Delta {
     type Item = Delta;
-    type IntoIter = DeltaIterator<
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Vec<ToolCall>>,
-    >;
+    type IntoIter = DeltaIterator;
 
     fn into_iter(self) -> Self::IntoIter {
+        // Pre-process content if it exists
+        let content_chunks = if let Some(content) = self.content {
+            content.split_inclusive(' ').map(Box::from).collect()
+        } else {
+            Vec::new()
+        };
+
+        // Determine initial state
+        let initial_state = if self.role.is_some() {
+            DeltaState::Role
+        } else if !content_chunks.is_empty() {
+            DeltaState::Content
+        } else if self.tool_calls.is_some() {
+            DeltaState::ToolCalls
+        } else {
+            DeltaState::Done
+        };
+
         DeltaIterator {
-            role: vec![self.role.unwrap()].into_iter(),
-            content: self.content.map(|c| {
-                c.split_inclusive(' ')
-                    .map(Box::from)
-                    .collect::<Vec<Box<_>>>()
-                    .into_iter()
-            }),
-            tool_calls: self.tool_calls.map(|t| vec![t].into_iter()),
+            state: initial_state,
+            role: self.role,
+            content_chunks,
+            content_index: 0,
+            tool_calls: self.tool_calls,
         }
     }
 }
 
 impl IntoIterator for ChoiceStream {
     type Item = ChoiceStream;
-    type IntoIter = ChoiceStreamIterator<
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Vec<ToolCall>>,
-    >;
+    type IntoIter = ChoiceStreamIterator;
 
     fn into_iter(self) -> Self::IntoIter {
         ChoiceStreamIterator {
             index: self.index,
-            delta: self.delta.into_iter(),
+            delta_iter: self.delta.into_iter(),
             finish_reason: self.finish_reason,
         }
     }
@@ -92,88 +111,154 @@ impl IntoIterator for ChoiceStream {
 
 impl IntoIterator for CompletionStream {
     type Item = CompletionStream;
-    type IntoIter = CompletionStreamIterator<
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Vec<ToolCall>>,
-    >;
+    type IntoIter = CompletionStreamIterator;
 
     fn into_iter(self) -> Self::IntoIter {
         CompletionStreamIterator {
-            choices: self.choices.into_iter().map(|x| x.into_iter()).collect(),
+            choices: self
+                .choices
+                .into_iter()
+                .map(IntoIterator::into_iter)
+                .collect(),
             object: self.object,
             id: self.id,
             model: self.model,
             created: self.created,
             usage: self.usage,
+            done: false,
         }
     }
 }
 
-impl<I, T, U> Iterator for DeltaIterator<I, T, U>
-where
-    I: Iterator<Item = Box<str>>,
-    T: Iterator<Item = Box<str>>,
-    U: Iterator<Item = Vec<ToolCall>>,
-{
+impl Iterator for DeltaIterator {
     type Item = Delta;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let delta = Delta {
-            role: self.role.next(),
-            content: self.content.as_mut().and_then(Iterator::next),
-            tool_calls: self.tool_calls.as_mut().and_then(Iterator::next),
-        };
-        if delta.content.is_none() && delta.tool_calls.is_none() {
-            None
-        } else {
-            Some(delta)
+        match self.state {
+            DeltaState::Role => {
+                // Transition to next state
+                self.state = if !self.content_chunks.is_empty() {
+                    DeltaState::Content
+                } else if self.tool_calls.is_some() {
+                    DeltaState::ToolCalls
+                } else {
+                    DeltaState::Done
+                };
+
+                let role = self.role.take()?;
+
+                Some(Delta {
+                    role: Some(role),
+                    content: None,
+                    tool_calls: None,
+                })
+            }
+            DeltaState::Content => {
+                if self.content_index < self.content_chunks.len() {
+                    let chunk = self.content_chunks[self.content_index].clone();
+                    self.content_index += 1;
+
+                    // Check if we're done with content and should transition
+                    if self.content_index >= self.content_chunks.len() {
+                        self.state = if self.tool_calls.is_some() {
+                            DeltaState::ToolCalls
+                        } else {
+                            DeltaState::Done
+                        };
+                    }
+
+                    Some(Delta {
+                        role: None,
+                        content: Some(chunk),
+                        tool_calls: None,
+                    })
+                } else {
+                    // This shouldn't happen due to the state transition above,
+                    // but handle it gracefully
+                    self.state = if self.tool_calls.is_some() {
+                        DeltaState::ToolCalls
+                    } else {
+                        DeltaState::Done
+                    };
+                    self.next()
+                }
+            }
+            DeltaState::ToolCalls => {
+                self.state = DeltaState::Done;
+
+                let tool_calls = self.tool_calls.take()?;
+
+                Some(Delta {
+                    role: None,
+                    content: None,
+                    tool_calls: Some(tool_calls),
+                })
+            }
+            DeltaState::Done => None,
         }
     }
 }
 
-impl Iterator
-    for ChoiceStreamIterator<
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Vec<ToolCall>>,
-    >
-{
+impl Iterator for ChoiceStreamIterator {
     type Item = ChoiceStream;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let choice = ChoiceStream {
-            index: self.index,
-            delta: self.delta.next()?,
-            finish_reason: self.finish_reason.clone(),
+        let delta = self.delta_iter.next()?;
+
+        // Only include finish_reason when we're at the end of the delta iterator
+        let finish_reason = if self.delta_iter.state == DeltaState::Done {
+            self.finish_reason.clone()
+        } else {
+            None
         };
-        Some(choice)
+
+        Some(ChoiceStream {
+            index: self.index,
+            delta,
+            finish_reason,
+        })
     }
 }
 
-impl Iterator
-    for CompletionStreamIterator<
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Box<str>>,
-        std::vec::IntoIter<Vec<ToolCall>>,
-    >
-{
+impl Iterator for CompletionStreamIterator {
     type Item = CompletionStream;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let completion = CompletionStream {
-            choices: self
-                .choices
-                .iter_mut()
-                .map(|x| x.next())
-                .collect::<Option<Vec<ChoiceStream>>>()?,
+        if self.done {
+            return None;
+        }
+
+        // Collect next items from each choice iterator
+        let mut choices_next = Vec::new();
+        let mut all_done = true;
+
+        for choice_iter in &mut self.choices {
+            if let Some(next_choice) = choice_iter.next() {
+                choices_next.push(next_choice);
+
+                // If this iterator isn't done yet, not all are done
+                if choice_iter.delta_iter.state != DeltaState::Done {
+                    all_done = false;
+                }
+            }
+        }
+
+        if choices_next.is_empty() {
+            self.done = true;
+            return None;
+        }
+
+        self.done = all_done;
+
+        // Create the next CompletionStream
+        Some(CompletionStream {
+            choices: choices_next,
             object: self.object.clone(),
             id: self.id.clone(),
             model: self.model.clone(),
             created: self.created,
             usage: self.usage.clone(),
-        };
-        Some(completion)
+        })
     }
 }
 
@@ -182,7 +267,7 @@ impl From<Message> for Delta {
         match value {
             Message::User { content } => Delta {
                 role: Some("user".into()),
-                content: Some(content.to_string().into_boxed_str()),
+                content: Some(content.to_string().into()),
                 tool_calls: None,
             },
             Message::Assistant {
@@ -190,17 +275,17 @@ impl From<Message> for Delta {
                 tool_calls,
             } => Delta {
                 role: Some("assistant".into()),
-                content: content.map(|c| c.to_string().into_boxed_str()),
+                content: content.map(|c| c.to_string().into()),
                 tool_calls,
             },
             Message::System { content } => Delta {
                 role: Some("system".into()),
-                content: Some(content.to_string().into_boxed_str()),
+                content: Some(content.to_string().into()),
                 tool_calls: None,
             },
             Message::Tool { content } => Delta {
                 role: Some("function".into()),
-                content: Some(content.to_string().into_boxed_str()),
+                content: Some(content.to_string().into()),
                 tool_calls: None,
             },
         }

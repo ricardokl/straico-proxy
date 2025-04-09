@@ -1,16 +1,17 @@
 use crate::AppState;
-use crate::streaming::{CompletionStream, ChoiceStream, Delta};
-use actix_web::HttpResponseBuilder;
-use actix_web::http::StatusCode;
-use actix_web::{Either, Error, HttpResponse, error::ErrorInternalServerError, post, web};
+use crate::streaming::CompletionStream;
+use actix_web::{
+    Either, Error, HttpResponse, HttpResponseBuilder, error::ErrorInternalServerError,
+    http::StatusCode, post, web,
+};
 use futures::{StreamExt, stream};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
-use std::iter::Iterator;
-use straico_client::chat::{Chat, Tool};
-use straico_client::endpoints::completion::completion_request::CompletionRequest;
-use straico_client::endpoints::completion::completion_response::{
-    Choice, Completion, Message, ToolCall, Usage,
+use straico_client::{
+    chat::{Chat, Tool},
+    endpoints::completion::{
+        completion_request::CompletionRequest, completion_response::Completion,
+    },
 };
 
 /// Represents a chat completion request in the OpenAI API format
@@ -75,7 +76,6 @@ impl<'a> From<OpenAiRequest<'a>> for CompletionRequest<'a> {
     }
 }
 
-
 /// Handles OpenAI-style chat completion API requests
 ///
 /// This endpoint processes chat completion requests in the OpenAI API format, forwards them to the
@@ -120,10 +120,17 @@ async fn openai_completion<'a>(
     let parsed_response = response.parse().map_err(ErrorInternalServerError)?;
 
     if stream {
-        let i = CompletionStream::from(parsed_response);
-        let stream = stream::iter(i).map(|chunk| {
-            let json = serde_json::to_string(&chunk).unwrap();
-            Ok::<_, actix_web::Error>(web::Bytes::from(format!("data: {}\n\n", json)))
+        let completion_stream = CompletionStream::from(parsed_response);
+        let stream = stream::iter(completion_stream).map(|chunk| {
+            match serde_json::to_string(&chunk) {
+                Ok(json) => {
+                    Ok::<_, actix_web::Error>(web::Bytes::from(format!("data: {}\n\n", json)))
+                }
+                Err(e) => {
+                    eprintln!("Error serializing chunk: {}", e);
+                    Ok(web::Bytes::from(format!("data: {{}}\n\n"))) // Send empty object as fallback
+                }
+            }
         });
         let end_stream =
             stream::once(async { Ok::<_, actix_web::Error>(web::Bytes::from("data: [DONE]\n\n")) });
