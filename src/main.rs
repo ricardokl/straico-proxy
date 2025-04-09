@@ -2,6 +2,7 @@ use actix_web::{App, HttpResponse, HttpServer, web};
 use clap::Parser;
 use straico_client::client::StraicoClient;
 mod server;
+mod streaming;
 
 #[derive(Parser)]
 #[command(
