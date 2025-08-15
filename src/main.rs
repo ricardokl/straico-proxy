@@ -1,5 +1,7 @@
 use actix_web::{App, HttpResponse, HttpServer, web};
 use clap::Parser;
+use flexi_logger::{FileSpec, Logger, WriteMode};
+use log::{info, warn};
 use straico_client::client::StraicoClient;
 mod server;
 mod streaming;
@@ -52,15 +54,29 @@ struct AppState {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
+    let log_level = if cli.debug { "debug" } else { "info" };
 
-    let api_key = cli.api_key.expect("API key not set");
+    let _logger = Logger::try_with_str(log_level)
+        .unwrap()
+        .log_to_file(FileSpec::default())
+        .write_mode(WriteMode::BufferAndFlush)
+        .start()
+        .unwrap();
+
+    let api_key = match cli.api_key {
+        Some(key) => key,
+        None => {
+            warn!("API key not set, exiting");
+            return Ok(());
+        }
+    };
 
     let addr = format!("{}:{}", cli.host, cli.port);
-    println!("Starting Straico proxy server...");
-    println!("Server is running at http://{}", addr);
-    println!("Completions endpoint is at /v1/chat/completions");
+    info!("Starting Straico proxy server...");
+    info!("Server is running at http://{}", addr);
+    info!("Completions endpoint is at /v1/chat/completions");
     if cli.debug {
-        println!("Debug mode enabled - requests and responses will be logged");
+        info!("Debug mode enabled - requests and responses will be logged");
     }
 
     HttpServer::new(move || {
