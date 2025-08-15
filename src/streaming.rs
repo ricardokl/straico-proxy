@@ -42,8 +42,7 @@ enum DeltaState {
 pub struct DeltaIterator {
     state: DeltaState,
     role: Option<Box<str>>,
-    content_chunks: Vec<Box<str>>,
-    content_index: usize,
+    content: Option<Box<str>>,
     tool_calls: Option<Vec<ToolCall>>,
 }
 
@@ -68,17 +67,10 @@ impl IntoIterator for Delta {
     type IntoIter = DeltaIterator;
 
     fn into_iter(self) -> Self::IntoIter {
-        // Pre-process content if it exists
-        let content_chunks = if let Some(content) = self.content {
-            content.split_inclusive(' ').map(Box::from).collect()
-        } else {
-            Vec::new()
-        };
-
         // Determine initial state
         let initial_state = if self.role.is_some() {
             DeltaState::Role
-        } else if !content_chunks.is_empty() {
+        } else if self.content.is_some() {
             DeltaState::Content
         } else if self.tool_calls.is_some() {
             DeltaState::ToolCalls
@@ -89,8 +81,7 @@ impl IntoIterator for Delta {
         DeltaIterator {
             state: initial_state,
             role: self.role,
-            content_chunks,
-            content_index: 0,
+            content: self.content,
             tool_calls: self.tool_calls,
         }
     }
@@ -137,7 +128,7 @@ impl Iterator for DeltaIterator {
         match self.state {
             DeltaState::Role => {
                 // Transition to next state
-                self.state = if !self.content_chunks.is_empty() {
+                self.state = if self.content.is_some() {
                     DeltaState::Content
                 } else if self.tool_calls.is_some() {
                     DeltaState::ToolCalls
@@ -154,34 +145,21 @@ impl Iterator for DeltaIterator {
                 })
             }
             DeltaState::Content => {
-                if self.content_index < self.content_chunks.len() {
-                    let chunk = self.content_chunks[self.content_index].clone();
-                    self.content_index += 1;
-
-                    // Check if we're done with content and should transition
-                    if self.content_index >= self.content_chunks.len() {
-                        self.state = if self.tool_calls.is_some() {
-                            DeltaState::ToolCalls
-                        } else {
-                            DeltaState::Done
-                        };
-                    }
-
-                    Some(Delta {
-                        role: None,
-                        content: Some(chunk),
-                        tool_calls: None,
-                    })
+                // Transition to next state
+                self.state = if self.tool_calls.is_some() {
+                    DeltaState::ToolCalls
                 } else {
-                    // This shouldn't happen due to the state transition above,
-                    // but handle it gracefully
-                    self.state = if self.tool_calls.is_some() {
-                        DeltaState::ToolCalls
-                    } else {
-                        DeltaState::Done
-                    };
-                    self.next()
-                }
+                    DeltaState::Done
+                };
+
+                // Take the content
+                let content = self.content.take()?;
+
+                Some(Delta {
+                    role: None,
+                    content: Some(content),
+                    tool_calls: None,
+                })
             }
             DeltaState::ToolCalls => {
                 self.state = DeltaState::Done;
