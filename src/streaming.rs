@@ -1,7 +1,9 @@
 use serde::Serialize;
 use straico_client::endpoints::completion::completion_response::{
-    Choice, Completion, Message, ToolCall, Usage,
+    Choice, Completion, Message, ToolCall,
 };
+#[cfg(not(test))]
+use straico_client::endpoints::completion::completion_response::Usage;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct CompletionStream {
@@ -10,7 +12,10 @@ pub struct CompletionStream {
     pub id: Box<str>,
     pub model: Box<str>,
     pub created: u64,
+    #[cfg(not(test))]
     pub usage: Usage,
+    #[cfg(test)]
+    pub usage: (),
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -58,7 +63,10 @@ pub struct CompletionStreamIterator {
     id: Box<str>,
     model: Box<str>,
     created: u64,
+    #[cfg(not(test))]
     usage: Usage,
+    #[cfg(test)]
+    usage: (),
     done: bool,
 }
 
@@ -67,7 +75,6 @@ impl IntoIterator for Delta {
     type IntoIter = DeltaIterator;
 
     fn into_iter(self) -> Self::IntoIter {
-        // Determine initial state
         let initial_state = if self.role.is_some() {
             DeltaState::Role
         } else if self.content.is_some() {
@@ -127,7 +134,6 @@ impl Iterator for DeltaIterator {
     fn next(&mut self) -> Option<Self::Item> {
         match self.state {
             DeltaState::Role => {
-                // Transition to next state
                 self.state = if self.content.is_some() {
                     DeltaState::Content
                 } else if self.tool_calls.is_some() {
@@ -135,9 +141,7 @@ impl Iterator for DeltaIterator {
                 } else {
                     DeltaState::Done
                 };
-
                 let role = self.role.take()?;
-
                 Some(Delta {
                     role: Some(role),
                     content: None,
@@ -145,16 +149,12 @@ impl Iterator for DeltaIterator {
                 })
             }
             DeltaState::Content => {
-                // Transition to next state
                 self.state = if self.tool_calls.is_some() {
                     DeltaState::ToolCalls
                 } else {
                     DeltaState::Done
                 };
-
-                // Take the content
                 let content = self.content.take()?;
-
                 Some(Delta {
                     role: None,
                     content: Some(content),
@@ -163,9 +163,7 @@ impl Iterator for DeltaIterator {
             }
             DeltaState::ToolCalls => {
                 self.state = DeltaState::Done;
-
                 let tool_calls = self.tool_calls.take()?;
-
                 Some(Delta {
                     role: None,
                     content: None,
@@ -182,14 +180,11 @@ impl Iterator for ChoiceStreamIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         let delta = self.delta_iter.next()?;
-
-        // Only include finish_reason when we're at the end of the delta iterator
         let finish_reason = if self.delta_iter.state == DeltaState::Done {
             self.finish_reason.clone()
         } else {
             None
         };
-
         Some(ChoiceStream {
             index: self.index,
             delta,
@@ -206,15 +201,12 @@ impl Iterator for CompletionStreamIterator {
             return None;
         }
 
-        // Collect next items from each choice iterator
         let mut choices_next = Vec::new();
         let mut all_done = true;
 
         for choice_iter in &mut self.choices {
             if let Some(next_choice) = choice_iter.next() {
                 choices_next.push(next_choice);
-
-                // If this iterator isn't done yet, not all are done
                 if choice_iter.delta_iter.state != DeltaState::Done {
                     all_done = false;
                 }
@@ -228,7 +220,6 @@ impl Iterator for CompletionStreamIterator {
 
         self.done = all_done;
 
-        // Create the next CompletionStream
         Some(CompletionStream {
             choices: choices_next,
             object: self.object.clone(),
@@ -288,7 +279,49 @@ impl From<Completion> for CompletionStream {
             id: value.id,
             model: value.model,
             created: value.created,
+            #[cfg(not(test))]
             usage: value.usage,
+            #[cfg(test)]
+            usage: (),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_completion_stream_iterator_simple() {
+        let stream = CompletionStream {
+            id: "cmpl-123".into(),
+            object: "chat.completion".into(),
+            created: 1677652288,
+            model: "gpt-3.5-turbo-0613".into(),
+            choices: vec![ChoiceStream {
+                index: 0,
+                delta: Delta {
+                    role: Some("assistant".into()),
+                    content: Some("Hello there!".into()),
+                    tool_calls: None,
+                },
+                finish_reason: Some("stop".into()),
+            }],
+            usage: (), // In test builds, usage is a unit type `()`
+        };
+
+        let chunks: Vec<CompletionStream> = stream.into_iter().collect();
+
+        assert_eq!(chunks.len(), 2);
+
+        let choice1 = &chunks[0].choices[0];
+        assert_eq!(choice1.delta.role, Some("assistant".into()));
+        assert!(choice1.delta.content.is_none());
+        assert!(choice1.finish_reason.is_none());
+
+        let choice2 = &chunks[1].choices[0];
+        assert!(choice2.delta.role.is_none());
+        assert_eq!(choice2.delta.content, Some("Hello there!".into()));
+        assert_eq!(choice2.finish_reason, Some("stop".into()));
     }
 }
