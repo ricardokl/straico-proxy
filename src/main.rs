@@ -1,8 +1,10 @@
 use actix_web::{App, HttpResponse, HttpServer, web};
+use anyhow::Context;
 use clap::Parser;
 use flexi_logger::{FileSpec, Logger, WriteMode};
 use log::{info, warn};
 use straico_client::client::StraicoClient;
+mod error;
 mod server;
 mod streaming;
 
@@ -63,7 +65,7 @@ struct AppState {
 }
 
 #[actix_web::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let log_level = if cli.print_request_raw
         || cli.print_request_converted
@@ -75,8 +77,7 @@ async fn main() -> std::io::Result<()> {
         "info"
     };
 
-    let mut logger = Logger::try_with_str(log_level)
-        .unwrap()
+    let mut logger = Logger::try_with_str(log_level)?
         .log_to_file(FileSpec::default())
         .write_mode(WriteMode::BufferAndFlush);
 
@@ -88,7 +89,7 @@ async fn main() -> std::io::Result<()> {
         logger = logger.duplicate_to_stderr(flexi_logger::Duplicate::All);
     }
 
-    let _logger = logger.start().unwrap();
+    logger.start()?;
 
     let api_key = match cli.api_key {
         Some(key) => key,
@@ -131,4 +132,5 @@ async fn main() -> std::io::Result<()> {
     .bind(addr)?
     .run()
     .await
+    .context("Failed to run HTTP server")
 }
