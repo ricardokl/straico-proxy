@@ -1,7 +1,6 @@
-use crate::AppState;
-use crate::streaming::CompletionStream;
+use crate::{error::CustomError, streaming::CompletionStream, AppState};
 use actix_web::{
-    Either, Error, HttpResponse, HttpResponseBuilder, error::ErrorInternalServerError,
+    Either, HttpResponse, HttpResponseBuilder,
     http::StatusCode, post, web,
 };
 use futures::{stream, StreamExt};
@@ -93,7 +92,7 @@ impl<'a> From<OpenAiRequest<'a>> for CompletionRequest<'a> {
 async fn openai_completion<'a>(
     req: web::Json<serde_json::Value>,
     data: web::Data<AppState>,
-) -> Result<Either<web::Json<Completion>, HttpResponse>, Error> {
+) -> Result<Either<web::Json<Completion>, HttpResponse>, CustomError> {
     let req_inner = req.into_inner();
     if data.print_request_raw {
         debug!("\n\n===== Request recieved (raw): =====");
@@ -101,7 +100,7 @@ async fn openai_completion<'a>(
     }
 
     let client = data.client.clone();
-    let req_inner_oa: OpenAiRequest = serde_json::from_value(req_inner)?;
+    let req_inner_oa: OpenAiRequest = serde_json::from_value(req_inner.clone())?;
 
     if data.print_request_converted {
         let converted_request: CompletionRequest = req_inner_oa.clone().into();
@@ -118,17 +117,18 @@ async fn openai_completion<'a>(
         .bearer_auth(&data.key)
         .json(req_inner_oa)
         .send()
-        .await
-        .map_err(ErrorInternalServerError)?
-        .get_completion()
-        .map_err(ErrorInternalServerError)?;
+        .await?
+        .get_completion()?;
 
     if data.print_response_raw {
         debug!("\n\n===== Received response (raw): =====");
         debug!("\n{}", serde_json::to_string_pretty(&response).unwrap());
     }
 
-    let parsed_response = response.parse().map_err(ErrorInternalServerError)?;
+    let parsed_response =
+        response
+            .parse()
+            .map_err(|_| CustomError::ResponseParse(req_inner))?;
 
     if data.print_response_converted {
         debug!("\n\n===== Received response (converted): =====");
@@ -141,18 +141,16 @@ async fn openai_completion<'a>(
     if stream {
         let completion_stream = CompletionStream::from(parsed_response);
         let stream = stream::iter(completion_stream).map(|chunk| {
-            match serde_json::to_string(&chunk) {
-                Ok(json) => {
-                    Ok::<_, actix_web::Error>(web::Bytes::from(format!("data: {}\n\n", json)))
-                }
-                Err(e) => {
+            serde_json::to_string(&chunk)
+                .map(|json| web::Bytes::from(format!("data: {}\n\n", json)))
+                .map_err(|e| {
                     error!("Error serializing chunk: {}", e);
-                    Ok(web::Bytes::from(format!("data: {{}}\n\n"))) // Send empty object as fallback
-                }
-            }
+                    // Create an empty CustomError or a specific variant if it makes sense
+                    CustomError::SerdeJson(e)
+                })
         });
         let end_stream =
-            stream::once(async { Ok::<_, actix_web::Error>(web::Bytes::from("data: [DONE]\n\n")) });
+            stream::once(async { Ok(web::Bytes::from("data: [DONE]\n\n")) });
         let final_stream = stream.chain(end_stream);
         Ok(Either::Right(
             HttpResponseBuilder::new(StatusCode::OK)

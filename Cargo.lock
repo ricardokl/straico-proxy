@@ -1851,14 +1851,17 @@ name = "straico-proxy"
 version = "0.1.0"
 dependencies = [
  "actix-web",
+ "anyhow",
  "clap",
  "derive",
  "flexi_logger",
  "futures",
  "log",
+ "reqwest",
  "serde",
  "serde_json",
  "straico",
+ "thiserror",
 ]
 
 [[package]]
