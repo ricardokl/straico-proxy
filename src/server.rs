@@ -4,7 +4,8 @@ use actix_web::{
     Either, Error, HttpResponse, HttpResponseBuilder, error::ErrorInternalServerError,
     http::StatusCode, post, web,
 };
-use futures::{StreamExt, stream};
+use futures::{stream, StreamExt};
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use straico_client::{
@@ -95,8 +96,8 @@ async fn openai_completion<'a>(
 ) -> Result<Either<web::Json<Completion>, HttpResponse>, Error> {
     let req_inner = req.into_inner();
     if data.debug {
-        eprintln!("\n\n===== Request recieved: =====");
-        eprintln!("\n{}", serde_json::to_string_pretty(&req_inner)?);
+        debug!("\n\n===== Request recieved: =====");
+        debug!("\n{}", serde_json::to_string_pretty(&req_inner).unwrap());
     }
     let client = data.client.clone();
 
@@ -113,8 +114,8 @@ async fn openai_completion<'a>(
         .map_err(ErrorInternalServerError)?;
 
     if data.debug {
-        eprintln!("\n\n===== Received response: =====");
-        eprintln!("\n{}", serde_json::to_string_pretty(&response)?);
+        debug!("\n\n===== Received response: =====");
+        debug!("\n{}", serde_json::to_string_pretty(&response).unwrap());
     }
 
     let parsed_response = response.parse().map_err(ErrorInternalServerError)?;
@@ -127,7 +128,7 @@ async fn openai_completion<'a>(
                     Ok::<_, actix_web::Error>(web::Bytes::from(format!("data: {}\n\n", json)))
                 }
                 Err(e) => {
-                    eprintln!("Error serializing chunk: {}", e);
+                    error!("Error serializing chunk: {}", e);
                     Ok(web::Bytes::from(format!("data: {{}}\n\n"))) // Send empty object as fallback
                 }
             }
