@@ -25,9 +25,18 @@ struct Cli {
     #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
     api_key: Option<String>,
 
-    /// Enable debug logging of requests and responses
+    /// Print the raw request
     #[arg(long)]
-    debug: bool,
+    print_request_raw: bool,
+    /// Print the request after converting to Straico format
+    #[arg(long)]
+    print_request_converted: bool,
+    /// Print the raw response from Straico
+    #[arg(long)]
+    print_response_raw: bool,
+    /// Print the response after converting to OpenAI format
+    #[arg(long)]
+    print_response_converted: bool,
 }
 
 // pub fn completion_with_key(
@@ -47,21 +56,39 @@ struct AppState {
     client: StraicoClient,
     /// API authentication key for Straico
     key: String,
-    /// Flag to enable debug logging of requests/responses
-    debug: bool,
+    print_request_raw: bool,
+    print_request_converted: bool,
+    print_response_raw: bool,
+    print_response_converted: bool,
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
-    let log_level = if cli.debug { "debug" } else { "info" };
+    let log_level = if cli.print_request_raw
+        || cli.print_request_converted
+        || cli.print_response_raw
+        || cli.print_response_converted
+    {
+        "debug"
+    } else {
+        "info"
+    };
 
-    let _logger = Logger::try_with_str(log_level)
+    let mut logger = Logger::try_with_str(log_level)
         .unwrap()
         .log_to_file(FileSpec::default())
-        .write_mode(WriteMode::BufferAndFlush)
-        .start()
-        .unwrap();
+        .write_mode(WriteMode::BufferAndFlush);
+
+    if cli.print_request_raw
+        || cli.print_request_converted
+        || cli.print_response_raw
+        || cli.print_response_converted
+    {
+        logger = logger.duplicate_to_stderr(flexi_logger::Duplicate::All);
+    }
+
+    let _logger = logger.start().unwrap();
 
     let api_key = match cli.api_key {
         Some(key) => key,
@@ -75,8 +102,17 @@ async fn main() -> std::io::Result<()> {
     info!("Starting Straico proxy server...");
     info!("Server is running at http://{}", addr);
     info!("Completions endpoint is at /v1/chat/completions");
-    if cli.debug {
-        info!("Debug mode enabled - requests and responses will be logged");
+    if cli.print_request_raw {
+        info!("Printing raw requests");
+    }
+    if cli.print_request_converted {
+        info!("Printing converted requests");
+    }
+    if cli.print_response_raw {
+        info!("Printing raw responses");
+    }
+    if cli.print_response_converted {
+        info!("Printing converted responses");
     }
 
     HttpServer::new(move || {
@@ -84,7 +120,10 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(AppState {
                 client: StraicoClient::new(),
                 key: api_key.clone(),
-                debug: cli.debug,
+                print_request_raw: cli.print_request_raw,
+                print_request_converted: cli.print_request_converted,
+                print_response_raw: cli.print_response_raw,
+                print_response_converted: cli.print_response_converted,
             }))
             .service(server::openai_completion)
             .default_service(web::to(HttpResponse::NotFound))

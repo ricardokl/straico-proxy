@@ -95,13 +95,23 @@ async fn openai_completion<'a>(
     data: web::Data<AppState>,
 ) -> Result<Either<web::Json<Completion>, HttpResponse>, Error> {
     let req_inner = req.into_inner();
-    if data.debug {
-        debug!("\n\n===== Request recieved: =====");
+    if data.print_request_raw {
+        debug!("\n\n===== Request recieved (raw): =====");
         debug!("\n{}", serde_json::to_string_pretty(&req_inner).unwrap());
     }
-    let client = data.client.clone();
 
+    let client = data.client.clone();
     let req_inner_oa: OpenAiRequest = serde_json::from_value(req_inner)?;
+
+    if data.print_request_converted {
+        let converted_request: CompletionRequest = req_inner_oa.clone().into();
+        debug!("\n\n===== Request recieved (converted): =====");
+        debug!(
+            "\n{}",
+            serde_json::to_string_pretty(&converted_request).unwrap()
+        );
+    }
+
     let stream = req_inner_oa.stream;
     let response = client
         .completion()
@@ -113,12 +123,20 @@ async fn openai_completion<'a>(
         .get_completion()
         .map_err(ErrorInternalServerError)?;
 
-    if data.debug {
-        debug!("\n\n===== Received response: =====");
+    if data.print_response_raw {
+        debug!("\n\n===== Received response (raw): =====");
         debug!("\n{}", serde_json::to_string_pretty(&response).unwrap());
     }
 
     let parsed_response = response.parse().map_err(ErrorInternalServerError)?;
+
+    if data.print_response_converted {
+        debug!("\n\n===== Received response (converted): =====");
+        debug!(
+            "\n{}",
+            serde_json::to_string_pretty(&parsed_response).unwrap()
+        );
+    }
 
     if stream {
         let completion_stream = CompletionStream::from(parsed_response);
