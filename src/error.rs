@@ -2,7 +2,6 @@ use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 use serde_json::Value;
 use std::fmt::Debug;
 use reqwest::Error as ReqwestError;
-use straico_client::error::Error as StraicoError;
 use thiserror::Error;
 
 use anyhow::Error as AnyhowError;
@@ -11,8 +10,6 @@ use anyhow::Error as AnyhowError;
 pub enum CustomError {
     #[error("Failed to serialize or deserialize JSON")]
     SerdeJson(#[from] serde_json::Error),
-    #[error("Error from Straico client")]
-    StraicoClient(#[from] StraicoError),
     #[error("Error from HTTP client")]
     ReqwestClient(#[from] ReqwestError),
     #[error("Failed to parse response from Straico API")]
@@ -25,7 +22,6 @@ impl ResponseError for CustomError {
     fn status_code(&self) -> StatusCode {
         match *self {
             CustomError::SerdeJson(_) => StatusCode::BAD_REQUEST,
-            CustomError::StraicoClient(_) => StatusCode::INTERNAL_SERVER_ERROR,
             CustomError::ReqwestClient(_) => StatusCode::INTERNAL_SERVER_ERROR,
             CustomError::ResponseParse(_) => StatusCode::INTERNAL_SERVER_ERROR,
             CustomError::Anyhow(_) => StatusCode::INTERNAL_SERVER_ERROR,
