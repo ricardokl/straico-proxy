@@ -70,17 +70,18 @@ async fn main() -> anyhow::Result<()> {
         "info"
     };
 
-    let mut logger = Logger::try_with_str(log_level)?
+    let logger = Logger::try_with_str(log_level)?
         .log_to_file(FileSpec::default())
-        .write_mode(WriteMode::BufferAndFlush);
-
-    if cli.print_request_raw
-        || cli.print_request_converted
-        || cli.print_response_raw
-        || cli.print_response_converted
-    {
-        logger = logger.duplicate_to_stderr(flexi_logger::Duplicate::All);
-    }
+        .write_mode(WriteMode::BufferAndFlush)
+        .duplicate_to_stderr(if cli.print_request_raw
+            || cli.print_request_converted
+            || cli.print_response_raw
+            || cli.print_response_converted
+        {
+            flexi_logger::Duplicate::All
+        } else {
+            flexi_logger::Duplicate::Info
+        });
 
     logger.start()?;
 
