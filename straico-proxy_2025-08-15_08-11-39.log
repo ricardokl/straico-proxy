@@ -1,7 +1,0 @@
-INFO [straico_proxy] Starting Straico proxy server...
-INFO [straico_proxy] Server is running at http://127.0.0.1:8000
-INFO [straico_proxy] Completions endpoint is at /v1/chat/completions
-INFO [straico_proxy] Debug mode enabled - requests and responses will be logged
-INFO [actix_server::builder] starting 4 workers
-INFO [actix_server::server] Actix runtime found; starting in Actix runtime
-INFO [actix_server::server] starting service: "actix-web-service-127.0.0.1:8000", workers: 4, listening on: 127.0.0.1:8000

@@ -41,13 +41,6 @@ struct Cli {
     print_response_converted: bool,
 }
 
-// pub fn completion_with_key(
-//     api_key: impl Display,
-// ) -> Result<StraicoRequestBuilder<ApiKeySet, CompletionRequest<'a>, CompletionData>> {
-//     let client = StraicoClient::default();
-//     Ok(client.completion().bearer_auth(api_key))
-// }
-
 /// Represents the application state shared across HTTP request handlers.
 ///
 /// This struct contains all the necessary components for handling requests,
