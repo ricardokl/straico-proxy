@@ -1,4 +1,6 @@
 use serde::Serialize;
+use serde_json::{json, Value};
+use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::endpoints::completion::completion_response::{
     Choice, Completion, Message, ToolCall,
 };
@@ -287,9 +289,73 @@ impl From<Completion> for CompletionStream {
     }
 }
 
+pub fn create_initial_chunk(model: &str, id: &str) -> Value {
+    let created = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    json!({
+        "choices": [{
+            "delta": {
+                "role": "assistant"
+            },
+            "index": 0
+        }],
+        "object": "chat.completion.chunk",
+        "id": id,
+        "model": model,
+        "created": created
+    })
+}
+
+pub fn create_heartbeat_chunk() -> Value {
+    json!({
+        "choices": [{
+            "delta": {},
+            "index": 0
+        }],
+        "object": "chat.completion.chunk"
+    })
+}
+
+pub fn create_error_chunk(error: &str) -> Value {
+    json!({
+        "error": {
+            "message": error
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_create_initial_chunk() {
+        let model = "test-model";
+        let id = "test-id";
+        let chunk = create_initial_chunk(model, id);
+        assert_eq!(chunk["object"], "chat.completion.chunk");
+        assert_eq!(chunk["id"], id);
+        assert_eq!(chunk["model"], model);
+        assert_eq!(chunk["choices"][0]["delta"]["role"], "assistant");
+        assert!(chunk["created"].is_u64());
+    }
+
+    #[test]
+    fn test_create_heartbeat_chunk() {
+        let chunk = create_heartbeat_chunk();
+        assert_eq!(chunk["object"], "chat.completion.chunk");
+        assert!(chunk["choices"][0]["delta"].is_object());
+        assert!(chunk["choices"][0]["delta"].as_object().unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_create_error_chunk() {
+        let error_message = "This is an error";
+        let chunk = create_error_chunk(error_message);
+        assert_eq!(chunk["error"]["message"], error_message);
+    }
 
     #[test]
     fn test_completion_stream_iterator_simple() {

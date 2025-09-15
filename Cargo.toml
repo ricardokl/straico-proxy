@@ -16,6 +16,9 @@ straico-client = { git = "https://github.com/ricardokl/straico-client", package 
 thiserror = "1.0.63"
 anyhow = "1.0.86"
 reqwest = { version = "0.12.23", features = ["json"] }
+tokio = { version = "1.47.1", features = ["full"] }
+tokio-stream = "0.1.15"
+rand = "0.8.5"
 
 [profile.release]
 lto = true

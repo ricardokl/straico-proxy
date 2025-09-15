@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use reqwest::Error as ReqwestError;
 use thiserror::Error;
 
+use crate::streaming::create_error_chunk;
 use anyhow::Error as AnyhowError;
 
 #[derive(Error, Debug)]
@@ -16,6 +17,12 @@ pub enum CustomError {
     ResponseParse(Value),
     #[error("An internal error occurred")]
     Anyhow(#[from] AnyhowError),
+}
+
+impl CustomError {
+    pub fn to_streaming_chunk(&self) -> Value {
+        create_error_chunk(&self.to_string())
+    }
 }
 
 impl ResponseError for CustomError {
