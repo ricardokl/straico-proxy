@@ -27,6 +27,14 @@ struct Cli {
     #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
     api_key: Option<String>,
 
+    /// Log to file (proxy.log)
+    #[arg(long)]
+    log_to_file: bool,
+
+    /// Log to standard output
+    #[arg(long)]
+    log_to_stdout: bool,
+
     /// Print the raw request
     #[arg(long)]
     print_request_raw: bool,
@@ -70,18 +78,19 @@ async fn main() -> anyhow::Result<()> {
         "info"
     };
 
-    let logger = Logger::try_with_str(log_level)?
-        .log_to_file(FileSpec::default())
-        .write_mode(WriteMode::BufferAndFlush)
-        .duplicate_to_stderr(if cli.print_request_raw
-            || cli.print_request_converted
-            || cli.print_response_raw
-            || cli.print_response_converted
-        {
-            flexi_logger::Duplicate::All
-        } else {
-            flexi_logger::Duplicate::Info
-        });
+    let mut logger = Logger::try_with_str(log_level)?.write_mode(WriteMode::BufferAndFlush);
+
+    if cli.log_to_file {
+        logger = logger.log_to_file(FileSpec::default());
+        if cli.log_to_stdout {
+            logger = logger.duplicate_to_stderr(flexi_logger::Duplicate::All);
+        }
+    } else if cli.log_to_stdout {
+        logger = logger.log_to_stderr();
+    } else {
+        // Default behavior: log info to stdout to show server is running
+        logger = logger.log_to_stderr();
+    }
 
     logger.start()?;
 
