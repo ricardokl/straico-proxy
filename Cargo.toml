@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "straico-proxy",
-    "straico-client"
+    "proxy",
+    "client"
 ]
 resolver = "2"
 
