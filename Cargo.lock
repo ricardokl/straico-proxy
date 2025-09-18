@@ -1861,18 +1861,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
-name = "straico"
+name = "straico-client"
 version = "0.1.0"
-source = "git+https://github.com/ricardokl/straico-client#9beac3456c283a4d423e09bff1a61df4007029c5"
 dependencies = [
- "actix-web",
- "anyhow",
- "clap",
  "futures",
  "regex",
  "reqwest",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
 ]
 
@@ -1891,7 +1888,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "straico",
+ "straico-client",
  "thiserror",
  "tokio",
  "tokio-stream",

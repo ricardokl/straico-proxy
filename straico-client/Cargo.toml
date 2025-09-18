@@ -1,0 +1,20 @@
+[package]
+name = "straico-client"
+version = "0.1.0"
+edition = "2024"
+description = "Rust client for the Straico API"
+license = "MIT"
+
+# [lib]
+# name = "straico"
+# path = "src/lib.rs"
+
+[dependencies]
+futures = "0.3.31"
+reqwest = { version = "0.12.8", features = ["json", "multipart", "stream"] }
+serde = { version = "1.0.211", default-features = false, features = ["derive"] }
+serde_json = "1.0.132"
+thiserror = "1.0.63"
+regex = "1.11.1"
+tokio = { version = "1.0", features = ["full"] }
+

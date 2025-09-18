@@ -3,7 +3,7 @@ use serde_json::Value;
 use std::fmt::Debug;
 use reqwest::Error as ReqwestError;
 use thiserror::Error;
-use straico_client::error::Error as StraicoError;
+use straico_client::error::StraicoError;
 
 use crate::streaming::create_error_chunk;
 use anyhow::Error as AnyhowError;
