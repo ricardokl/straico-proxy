@@ -3,7 +3,11 @@ use serde::Serialize;
 use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
-    endpoints::{completion::completion_request::CompletionRequest, ApiResponseData},
+    endpoints::{
+        completion::completion_request::CompletionRequest, 
+        chat::chat_request::ChatRequest,
+        ApiResponseData
+    },
     error::StraicoError,
 };
 
@@ -63,6 +67,17 @@ impl StraicoClient {
     pub fn completion<'a>(self) -> StraicoRequestBuilder<NoApiKey, CompletionRequest<'a>> {
         self.0
             .post("https://api.straico.com/v1/prompt/completion")
+            .into()
+    }
+
+    /// Creates a request builder for the new chat endpoint
+    ///
+    /// # Returns
+    ///
+    /// A `StraicoRequestBuilder` configured for making chat completion requests
+    pub fn chat(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest> {
+        self.0
+            .post("https://api.straico.com/v0/chat/completions")
             .into()
     }
 }
