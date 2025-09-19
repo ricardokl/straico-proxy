@@ -4,7 +4,9 @@ use clap::Parser;
 use flexi_logger::{FileSpec, Logger, WriteMode};
 use log::{info, warn};
 use straico_client::client::StraicoClient;
+mod content_conversion;
 mod error;
+mod openai_types;
 mod server;
 mod streaming;
 
@@ -130,6 +132,7 @@ async fn main() -> anyhow::Result<()> {
                 print_response_converted: cli.print_response_converted,
             }))
             .service(server::openai_completion)
+            .service(server::new_chat_completion)
             .default_service(web::to(HttpResponse::NotFound))
     })
     .bind(addr)?

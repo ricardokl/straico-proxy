@@ -41,7 +41,7 @@ This plan outlines the migration from the current Straico prompt endpoint (`/v1/
 ### Phase 1: Basic Chat Endpoint
 - [x] **P1-T1**: Preserve Current Implementation
 - [x] **P1-T2**: Create New Chat Request/Response Structures
-- [ ] **P1-T3**: Implement Content Format Conversion
+- [x] **P1-T3**: Implement Content Format Conversion
 - [ ] **P1-T4**: Add New Endpoint to Client
 - [ ] **P1-T5**: Update Proxy Server for New Endpoint
 - [ ] **P1-T6**: Add Configuration and Feature Flags

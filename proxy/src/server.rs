@@ -17,9 +17,16 @@ use std::borrow::Cow;
 use std::time::Duration;
 use straico_client::{
     chat::{Chat, Tool},
-    endpoints::completion::{
-        completion_request::CompletionRequest, completion_response::Completion,
+    endpoints::{
+        completion::{
+            completion_request::CompletionRequest, completion_response::Completion,
+        },
+        chat::ChatResponse,
     },
+};
+use crate::{
+    openai_types::OpenAiChatRequest,
+    content_conversion::convert_openai_request_to_straico,
 };
 use tokio::sync::mpsc;
 
@@ -144,7 +151,8 @@ async fn openai_completion<'a>(
             match res {
                 Ok(response) => match response.get_completion() {
                     Ok(completion_response) => {
-                        match completion_response.parse() {
+                        let completion = completion_response.get_completion_data();
+                        match completion.parse() {
                             Ok(parsed_response) => {
                                 if app_state.print_response_converted {
                                     debug!("\n\n===== Received response (converted): =====");
@@ -204,7 +212,8 @@ async fn openai_completion<'a>(
             debug!("\n{}", serde_json::to_string_pretty(&response).unwrap());
         }
 
-        let parsed_response = response
+        let completion = response.get_completion_data();
+        let parsed_response = completion
             .parse()
             .map_err(|_| CustomError::ResponseParse(req_inner))?;
 
@@ -217,6 +226,69 @@ async fn openai_completion<'a>(
         }
         Ok(Either::Left(web::Json(parsed_response)))
     }
+}
+
+/// Handles OpenAI-style chat completion requests using the new chat endpoint
+///
+/// This endpoint processes chat completion requests using the new Straico chat format
+/// with proper content format conversion from OpenAI to Straico format.
+///
+/// # Arguments
+/// * `req` - The incoming chat completion request in OpenAI format
+/// * `data` - Shared application state containing client and configuration
+///
+/// # Returns
+/// * `Result<impl Responder, Error>` - The completion response or error
+#[post("/v0/chat/completions")]
+async fn new_chat_completion(
+    req: web::Json<serde_json::Value>,
+    data: web::Data<AppState>,
+) -> Result<web::Json<ChatResponse>, CustomError> {
+    let req_inner = req.into_inner();
+    
+    if data.print_request_raw {
+        debug!("\n\n===== New Chat Request received (raw): =====");
+        debug!("\n{}", serde_json::to_string_pretty(&req_inner).unwrap());
+    }
+
+    // Parse as OpenAI chat request
+    let openai_request: OpenAiChatRequest = serde_json::from_value(req_inner.clone())
+        .map_err(|e| CustomError::Anyhow(anyhow::anyhow!("Failed to parse OpenAI request: {}", e)))?;
+
+    // Convert to Straico chat request
+    let straico_request = convert_openai_request_to_straico(openai_request)
+        .map_err(|e| CustomError::Anyhow(anyhow::anyhow!("Content conversion failed: {}", e)))?;
+
+    if data.print_request_converted {
+        debug!("\n\n===== New Chat Request converted to Straico: =====");
+        debug!("\n{}", serde_json::to_string_pretty(&straico_request).unwrap());
+    }
+
+    // Make request to new Straico chat endpoint
+    let client = data.client.clone();
+    let response = client
+        .chat()
+        .bearer_auth(&data.key)
+        .json(straico_request)
+        .send()
+        .await?;
+
+    if data.print_response_raw {
+        debug!("\n\n===== New Chat Response received (raw): =====");
+        debug!("\n{}", serde_json::to_string_pretty(&response).unwrap());
+    }
+
+    // For now, we'll need to parse the response manually since the new endpoint
+    // structure might be different. This will be refined based on actual API responses.
+    let chat_response: ChatResponse = serde_json::from_value(response.data)
+        .map_err(|e| CustomError::Anyhow(anyhow::anyhow!("Failed to parse chat response: {}", e)))?;
+
+    if data.print_response_converted {
+        debug!("\n\n===== New Chat Response converted: =====");
+        debug!("\n{}", serde_json::to_string_pretty(&chat_response).unwrap());
+    }
+
+    Ok(web::Json(chat_response))
 }
 
 fn create_streaming_response(
