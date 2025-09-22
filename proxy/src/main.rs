@@ -14,6 +14,7 @@ mod openai_types;
 mod response_utils;
 mod server;
 mod streaming;
+mod tool_embedding;
 
 #[derive(Parser)]
 #[command(

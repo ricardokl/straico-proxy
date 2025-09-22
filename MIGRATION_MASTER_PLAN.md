@@ -42,9 +42,9 @@ This plan outlines the migration from the current Straico prompt endpoint (`/v1/
 - [x] **P1-T7**: Testing and Validation
 
 ### Phase 2: Tool Calling Implementation  
-- [ ] **P2-T1**: Analyze Current Tool Implementation
-- [ ] **P2-T2**: Design Tool Embedding Strategy
-- [ ] **P2-T3**: Implement Tool Definition Injection
+- [x] **P2-T1**: Analyze Current Tool Implementation
+- [x] **P2-T2**: Design Tool Embedding Strategy
+- [x] **P2-T3**: Implement Tool Definition Injection
 - [ ] **P2-T4**: Adapt Tool Response Parsing
 - [ ] **P2-T5**: Update OpenAI Compatibility Layer
 - [ ] **P2-T6**: Testing and Validation

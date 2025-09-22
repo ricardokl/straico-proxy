@@ -6,7 +6,7 @@ use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
 /// This enum handles the dual content format support required by the OpenAI API:
 /// - String format: `"content": "Hello world"`
 /// - Array format: `"content": [{"type": "text", "text": "Hello world"}]`
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(untagged)]
 pub enum OpenAiContent {
     /// Simple string content format
@@ -19,7 +19,7 @@ pub enum OpenAiContent {
 ///
 /// This structure matches the OpenAI API specification for content objects
 /// within message content arrays.
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct OpenAiContentObject {
     /// The type of content (typically "text")
     #[serde(rename = "type")]
@@ -32,7 +32,7 @@ pub struct OpenAiContentObject {
 ///
 /// This structure handles incoming OpenAI-style messages that need to be
 /// converted to the new Straico chat format.
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct OpenAiChatMessage {
     /// The role of the message sender (system, user, assistant, tool)
     pub role: String,

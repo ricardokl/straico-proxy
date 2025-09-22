@@ -186,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_chat_request_builder_pattern() {
-        let request = ChatRequest::new()
+        let request = ChatRequest::builder()
             .model("test-model")
             .message(ChatMessage::system("System"))
             .message(ChatMessage::user("User"))
