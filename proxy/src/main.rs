@@ -165,7 +165,7 @@ async fn main() -> anyhow::Result<()> {
     let log_level = cli.log_level
         .as_deref()
         .or(Some(effective_config.environment.log_level.as_str()))
-        .unwrap_or_else(|| {
+        .unwrap_or({
             if cli.print_request_raw
                 || cli.print_request_converted
                 || cli.print_response_raw

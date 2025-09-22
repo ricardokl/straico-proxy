@@ -5,6 +5,7 @@ use crate::config::ProxyConfig;
 
 /// Configuration file format for persistent settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct ConfigFile {
     /// Proxy server configuration
     pub proxy: ProxyConfig,
@@ -86,15 +87,6 @@ impl Default for EnvironmentConfig {
     }
 }
 
-impl Default for ConfigFile {
-    fn default() -> Self {
-        Self {
-            proxy: ProxyConfig::default(),
-            features: FeatureFlags::default(),
-            environment: EnvironmentConfig::default(),
-        }
-    }
-}
 
 /// Configuration manager for loading and saving configuration files
 pub struct ConfigManager {

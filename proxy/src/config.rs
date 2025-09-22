@@ -32,20 +32,17 @@ impl Default for ProxyConfig {
 
 /// Endpoint routing configuration
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum EndpointRoute {
     /// Use the legacy completion endpoint
     Legacy,
     /// Use the new chat endpoint
+    #[default]
     NewChat,
     /// Auto-select based on request characteristics
     Auto,
 }
 
-impl Default for EndpointRoute {
-    fn default() -> Self {
-        EndpointRoute::NewChat
-    }
-}
 
 impl ProxyConfig {
     /// Creates a new configuration with default values

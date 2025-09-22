@@ -192,7 +192,7 @@ pub mod request_utils {
 
         // Validate temperature range
         if let Some(temp) = request.temperature {
-            if temp < 0.0 || temp > 2.0 {
+            if !(0.0..=2.0).contains(&temp) {
                 return Err("Temperature must be between 0.0 and 2.0".to_string());
             }
         }
