@@ -162,8 +162,8 @@ pub mod error_response_utils {
 
 /// Utilities for request processing and routing
 pub mod request_utils {
-    use super::*;
     use crate::config::{EndpointRoute, ProxyConfig};
+    use crate::openai_types::OpenAiChatRequest;
 
     /// Determines the best endpoint route for a given request
     pub fn determine_endpoint_route(

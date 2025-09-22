@@ -183,7 +183,7 @@ impl ChatResponse {
     pub fn has_tool_calls(&self) -> bool {
         self.choices.iter().any(|choice| {
             choice.message.tool_calls.as_ref()
-                .map_or(false, |calls| !calls.is_empty())
+                .is_some_and(|calls| !calls.is_empty())
         })
     }
 }

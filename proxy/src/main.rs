@@ -5,7 +5,7 @@ use flexi_logger::{FileSpec, Logger, WriteMode};
 use log::{info, warn};
 use straico_client::client::StraicoClient;
 use config::ProxyConfig;
-use config_manager::{ConfigManager, FeatureFlags, EnvironmentConfig};
+use config_manager::ConfigManager;
 mod config;
 mod config_manager;
 mod content_conversion;
@@ -128,7 +128,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Handle config file creation
     if cli.create_config {
-        ConfigManager::create_default_config(&cli.config)?;
+        if let Err(e) = ConfigManager::create_default_config(&cli.config) {
+            return Err(anyhow::anyhow!("Failed to create config file: {}", e));
+        }
         info!("Created default configuration file: {}", cli.config);
         return Ok(());
     }

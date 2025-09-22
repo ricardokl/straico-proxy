@@ -383,23 +383,23 @@ impl Message {
         {
             if let Some(optional_content) = content {
                 if optional_content
-                    .find(&format.tool_calls.tool_call_begin)
+                    .find(format.tool_calls.tool_call_begin)
                     .is_some()
                     || optional_content
-                        .find(&format.tool_calls.tool_call_end)
+                        .find(format.tool_calls.tool_call_end)
                         .is_some()
                 {
                     let pattern: &str = &format!(
                         r"{}(.*?){}",
-                        regex::escape(&format.tool_calls.tool_call_begin),
-                        regex::escape(&format.tool_calls.tool_call_end)
+                        regex::escape(format.tool_calls.tool_call_begin),
+                        regex::escape(format.tool_calls.tool_call_end)
                     );
                     let re = regex::Regex::new(pattern)?;
                     let items = re
                         .find_iter(&optional_content.replace("\n", ""))
                         .map(|c| {
                             c.as_str()
-                                .trim_start_matches(&format.tool_calls.tool_call_begin)
+                                .trim_start_matches(format.tool_calls.tool_call_begin)
                                 .trim_end_matches(&format.tool_calls.tool_call_end)
                         })
                         .map(|s| {

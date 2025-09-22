@@ -52,7 +52,7 @@ impl ChatResponseExt for ApiResponseData {
     /// Returns `StraicoError::Serde` if the response data cannot be parsed as a ChatResponse
     fn get_chat_response(self) -> Result<ChatResponse, StraicoError> {
         self.get_chat_response()
-            .map_err(|e| StraicoError::Serde(e))
+            .map_err(StraicoError::Serde)
     }
 }
 
