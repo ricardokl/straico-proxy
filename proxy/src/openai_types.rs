@@ -210,7 +210,7 @@ impl OpenAiChatRequest {
             .map(|msg| msg.to_straico_message())
             .collect();
 
-        let mut builder = ChatRequest::new()
+        let mut builder = ChatRequest::builder()
             .model(&self.model)
             .messages(messages);
 

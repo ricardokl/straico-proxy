@@ -73,7 +73,7 @@ pub mod builders {
         model: S, 
         message: M
     ) -> ChatRequest {
-        ChatRequest::new()
+        ChatRequest::builder()
             .model(model)
             .message(ChatMessage::user(message))
             .build()
@@ -93,7 +93,7 @@ pub mod builders {
         system_message: Sys,
         user_message: User,
     ) -> ChatRequest {
-        ChatRequest::new()
+        ChatRequest::builder()
             .model(model)
             .message(ChatMessage::system(system_message))
             .message(ChatMessage::user(user_message))
@@ -112,7 +112,7 @@ pub mod builders {
         model: S,
         messages: Vec<ChatMessage>,
     ) -> ChatRequest {
-        ChatRequest::new()
+        ChatRequest::builder()
             .model(model)
             .messages(messages)
             .build()
@@ -134,7 +134,7 @@ pub mod builders {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> ChatRequest {
-        let mut builder = ChatRequest::new()
+        let mut builder = ChatRequest::builder()
             .model(model)
             .messages(messages);
 

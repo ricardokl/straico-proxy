@@ -6,9 +6,9 @@ use super::{ChatMessage, ChatRequest, ContentObject, ChatResponseContent, ChatCo
 ///
 /// This module provides conversion functions between different content formats
 /// and compatibility with existing OpenAI-style messages.
-
-// Note: Direct From implementations for Vec<ContentObject> violate orphan rules
-// Instead, we provide utility functions for these conversions
+///
+/// Note: Direct From implementations for Vec<ContentObject> violate orphan rules
+/// Instead, we provide utility functions for these conversions
 
 impl From<Content> for Vec<ContentObject> {
     /// Converts existing Content enum to new ContentObject format.

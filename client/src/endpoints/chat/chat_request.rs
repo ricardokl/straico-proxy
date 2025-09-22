@@ -63,7 +63,7 @@ impl ChatRequest {
     ///
     /// # Returns
     /// A new `ChatRequestBuilder` instance for constructing the request
-    pub fn new() -> ChatRequestBuilder {
+    pub fn builder() -> ChatRequestBuilder {
         ChatRequestBuilder::default()
     }
 }

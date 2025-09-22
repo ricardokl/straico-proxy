@@ -93,7 +93,6 @@ pub mod chat_response_utils {
 
 /// Utilities for error handling and response formatting
 pub mod error_response_utils {
-    use super::*;
     use serde::{Deserialize, Serialize};
 
     /// OpenAI-compatible error response structure

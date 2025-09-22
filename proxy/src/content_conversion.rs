@@ -5,6 +5,7 @@ use crate::openai_types::{OpenAiContent, OpenAiChatMessage, OpenAiChatRequest, O
 ///
 /// This module provides comprehensive conversion functions to handle the dual content
 /// format support required by the OpenAI API compatibility layer.
+///
 
 /// Converts OpenAI content format to Straico ContentObject vector.
 ///

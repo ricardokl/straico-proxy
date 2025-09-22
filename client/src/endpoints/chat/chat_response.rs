@@ -173,7 +173,7 @@ impl ChatResponse {
     pub fn first_content(&self) -> Option<String> {
         self.first_choice()
             .and_then(|choice| choice.message.content.as_ref())
-            .map(|content| content.to_string())
+            .map(|content| content.as_string())
     }
 
     /// Checks if the response contains tool calls.
@@ -202,7 +202,7 @@ impl ChatChoice {
     /// # Returns
     /// An Option containing the content string, or None if no content exists
     pub fn content_string(&self) -> Option<String> {
-        self.message.content.as_ref().map(|content| content.to_string())
+        self.message.content.as_ref().map(|content| content.as_string())
     }
 }
 
@@ -211,7 +211,7 @@ impl ChatResponseContent {
     ///
     /// # Returns
     /// String representation of the content
-    pub fn to_string(&self) -> String {
+    pub fn as_string(&self) -> String {
         match self {
             ChatResponseContent::Text(text) => text.clone(),
             ChatResponseContent::Array(objects) => {
@@ -240,7 +240,7 @@ impl ChatResponseContent {
 
 impl std::fmt::Display for ChatResponseContent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}", self.as_string())
     }
 }
 
