@@ -5,7 +5,9 @@ use flexi_logger::{FileSpec, Logger, WriteMode};
 use log::{info, warn};
 use straico_client::client::StraicoClient;
 use config::ProxyConfig;
+use config_manager::{ConfigManager, FeatureFlags, EnvironmentConfig};
 mod config;
+mod config_manager;
 mod content_conversion;
 mod error;
 mod openai_types;
@@ -19,51 +21,87 @@ mod streaming;
     about = "A proxy server for Straico API that provides OpenAI-compatible endpoints",
     version
 )]
-struct Cli {
+pub struct Cli {
     /// Host address to bind to
     #[arg(long, default_value = "127.0.0.1")]
-    host: String,
+    pub host: String,
 
     /// Port to listen on
     #[arg(long, default_value = "8000")]
-    port: u16,
+    pub port: u16,
 
     /// API key for Straico (alternatively use STRAICO_API_KEY env var)
     #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
-    api_key: Option<String>,
+    pub api_key: Option<String>,
+
+    /// Configuration file path
+    #[arg(long, default_value = "config.toml")]
+    pub config: String,
+
+    /// Create a default configuration file and exit
+    #[arg(long)]
+    pub create_config: bool,
 
     /// Log to file (proxy.log)
     #[arg(long)]
-    log_to_file: bool,
+    pub log_to_file: bool,
 
     /// Log to standard output
     #[arg(long)]
-    log_to_stdout: bool,
+    pub log_to_stdout: bool,
 
     /// Print the raw request
     #[arg(long)]
-    print_request_raw: bool,
+    pub print_request_raw: bool,
     /// Print the request after converting to Straico format
     #[arg(long)]
-    print_request_converted: bool,
+    pub print_request_converted: bool,
     /// Print the raw response from Straico
     #[arg(long)]
-    print_response_raw: bool,
+    pub print_response_raw: bool,
     /// Print the response after converting to OpenAI format
     #[arg(long)]
-    print_response_converted: bool,
+    pub print_response_converted: bool,
 
     /// Use the new chat endpoint by default
     #[arg(long)]
-    use_new_chat_endpoint: bool,
+    pub use_new_chat_endpoint: bool,
 
     /// Enable request validation
     #[arg(long)]
-    validate_requests: bool,
+    pub validate_requests: bool,
 
     /// Include debug information in responses
     #[arg(long)]
-    include_debug_info: bool,
+    pub include_debug_info: bool,
+
+    /// Set log level (trace, debug, info, warn, error)
+    #[arg(long)]
+    pub log_level: Option<String>,
+
+    /// Environment (development, staging, production)
+    #[arg(long)]
+    pub environment: Option<String>,
+
+    /// Enable feature flag
+    #[arg(long, action = clap::ArgAction::Append)]
+    pub enable_feature: Vec<String>,
+
+    /// Disable feature flag
+    #[arg(long, action = clap::ArgAction::Append)]
+    pub disable_feature: Vec<String>,
+
+    /// Maximum messages per request
+    #[arg(long)]
+    pub max_messages: Option<usize>,
+
+    /// Maximum content length per message
+    #[arg(long)]
+    pub max_content_length: Option<usize>,
+
+    /// Request timeout in seconds
+    #[arg(long)]
+    pub timeout: Option<u64>,
 }
 
 /// Represents the application state shared across HTTP request handlers.
@@ -87,19 +125,59 @@ struct AppState {
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let log_level = if cli.print_request_raw
-        || cli.print_request_converted
-        || cli.print_response_raw
-        || cli.print_response_converted
-    {
-        "debug"
-    } else {
-        "info"
-    };
+
+    // Handle config file creation
+    if cli.create_config {
+        ConfigManager::create_default_config(&cli.config)?;
+        info!("Created default configuration file: {}", cli.config);
+        return Ok(());
+    }
+
+    // Load and merge configuration
+    let mut config_manager = ConfigManager::new(&cli.config);
+    config_manager.merge_with_cli_args(&cli);
+
+    // Apply feature flags from CLI
+    for feature in &cli.enable_feature {
+        if let Err(e) = config_manager.set_feature_flag(feature, true) {
+            warn!("Failed to enable feature '{}': {}", feature, e);
+        }
+    }
+    for feature in &cli.disable_feature {
+        if let Err(e) = config_manager.set_feature_flag(feature, false) {
+            warn!("Failed to disable feature '{}': {}", feature, e);
+        }
+    }
+
+    // Validate configuration
+    if let Err(errors) = config_manager.validate_config() {
+        for error in errors {
+            warn!("Configuration error: {}", error);
+        }
+        return Err(anyhow::anyhow!("Configuration validation failed"));
+    }
+
+    let effective_config = config_manager.get_effective_config();
+
+    // Set up logging
+    let log_level = cli.log_level
+        .as_deref()
+        .or(Some(effective_config.environment.log_level.as_str()))
+        .unwrap_or_else(|| {
+            if cli.print_request_raw
+                || cli.print_request_converted
+                || cli.print_response_raw
+                || cli.print_response_converted
+            {
+                "debug"
+            } else {
+                "info"
+            }
+        });
 
     let mut logger = Logger::try_with_str(log_level)?.write_mode(WriteMode::BufferAndFlush);
 
-    if cli.log_to_file {
+    if cli.log_to_file || effective_config.features.enable_request_logging {
         logger = logger.log_to_file(FileSpec::default());
         if cli.log_to_stdout {
             logger = logger.duplicate_to_stderr(flexi_logger::Duplicate::All);
@@ -121,8 +199,14 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let addr = format!("{}:{}", cli.host, cli.port);
+    let host = cli.environment.as_deref()
+        .map(|_| effective_config.environment.host.clone())
+        .unwrap_or(cli.host);
+    let port = effective_config.environment.port;
+    
+    let addr = format!("{}:{}", host, port);
     info!("Starting Straico proxy server...");
+    info!("Environment: {}", effective_config.environment.environment);
     info!("Server is running at http://{}", addr);
     info!("Completions endpoint is at /v1/chat/completions");
     if cli.print_request_raw {
@@ -138,15 +222,22 @@ async fn main() -> anyhow::Result<()> {
         info!("Printing converted responses");
     }
 
-    let proxy_config = ProxyConfig::new()
-        .with_new_chat_endpoint(cli.use_new_chat_endpoint)
-        .with_validation(cli.validate_requests)
-        .with_debug_info(cli.include_debug_info);
+    // Display configuration summary
+    info!("Configuration Summary:");
+    info!("  - Environment: {}", effective_config.environment.environment);
+    info!("  - Use new chat endpoint: {}", effective_config.proxy.use_new_chat_endpoint);
+    info!("  - Validate requests: {}", effective_config.proxy.validate_requests);
+    info!("  - Include debug info: {}", effective_config.proxy.include_debug_info);
+    info!("  - Enabled features: {:?}", effective_config.get_enabled_features());
 
-    info!("Configuration:");
-    info!("  - Use new chat endpoint: {}", proxy_config.use_new_chat_endpoint);
-    info!("  - Validate requests: {}", proxy_config.validate_requests);
-    info!("  - Include debug info: {}", proxy_config.include_debug_info);
+    // Apply configuration limits
+    let mut proxy_config = effective_config.proxy.clone();
+    if let Some(max_messages) = cli.max_messages {
+        proxy_config.max_messages_per_request = Some(max_messages);
+    }
+    if let Some(max_content) = cli.max_content_length {
+        proxy_config.max_content_length = Some(max_content);
+    }
 
     HttpServer::new(move || {
         App::new()
