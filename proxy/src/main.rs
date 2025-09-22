@@ -4,9 +4,12 @@ use clap::Parser;
 use flexi_logger::{FileSpec, Logger, WriteMode};
 use log::{info, warn};
 use straico_client::client::StraicoClient;
+use config::ProxyConfig;
+mod config;
 mod content_conversion;
 mod error;
 mod openai_types;
+mod response_utils;
 mod server;
 mod streaming;
 
@@ -49,6 +52,18 @@ struct Cli {
     /// Print the response after converting to OpenAI format
     #[arg(long)]
     print_response_converted: bool,
+
+    /// Use the new chat endpoint by default
+    #[arg(long)]
+    use_new_chat_endpoint: bool,
+
+    /// Enable request validation
+    #[arg(long)]
+    validate_requests: bool,
+
+    /// Include debug information in responses
+    #[arg(long)]
+    include_debug_info: bool,
 }
 
 /// Represents the application state shared across HTTP request handlers.
@@ -61,6 +76,8 @@ struct AppState {
     client: StraicoClient,
     /// API authentication key for Straico
     key: String,
+    /// Proxy configuration settings
+    config: ProxyConfig,
     print_request_raw: bool,
     print_request_converted: bool,
     print_response_raw: bool,
@@ -121,18 +138,29 @@ async fn main() -> anyhow::Result<()> {
         info!("Printing converted responses");
     }
 
+    let proxy_config = ProxyConfig::new()
+        .with_new_chat_endpoint(cli.use_new_chat_endpoint)
+        .with_validation(cli.validate_requests)
+        .with_debug_info(cli.include_debug_info);
+
+    info!("Configuration:");
+    info!("  - Use new chat endpoint: {}", proxy_config.use_new_chat_endpoint);
+    info!("  - Validate requests: {}", proxy_config.validate_requests);
+    info!("  - Include debug info: {}", proxy_config.include_debug_info);
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(AppState {
                 client: StraicoClient::new(),
                 key: api_key.clone(),
+                config: proxy_config.clone(),
                 print_request_raw: cli.print_request_raw,
                 print_request_converted: cli.print_request_converted,
                 print_response_raw: cli.print_response_raw,
                 print_response_converted: cli.print_response_converted,
             }))
             .service(server::openai_completion)
-            .service(server::new_chat_completion)
+            .service(server::openai_chat_completion)
             .default_service(web::to(HttpResponse::NotFound))
     })
     .bind(addr)?

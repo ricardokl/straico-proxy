@@ -30,6 +30,15 @@ use crate::{
 };
 use tokio::sync::mpsc;
 
+/// Generates a unique request ID for chat completions
+fn generate_request_id() -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(12)
+        .map(char::from)
+        .collect()
+}
+
 /// Represents a chat completion request in the OpenAI API format
 ///
 /// This struct maps incoming API requests to the internal completion request format,
@@ -239,15 +248,15 @@ async fn openai_completion<'a>(
 ///
 /// # Returns
 /// * `Result<impl Responder, Error>` - The completion response or error
-#[post("/v0/chat/completions")]
-async fn new_chat_completion(
+#[post("/v1/chat/completions")]
+async fn openai_chat_completion(
     req: web::Json<serde_json::Value>,
     data: web::Data<AppState>,
 ) -> Result<web::Json<ChatResponse>, CustomError> {
     let req_inner = req.into_inner();
     
     if data.print_request_raw {
-        debug!("\n\n===== New Chat Request received (raw): =====");
+        debug!("\n\n===== Chat Request received (raw): =====");
         debug!("\n{}", serde_json::to_string_pretty(&req_inner).unwrap());
     }
 
@@ -255,12 +264,17 @@ async fn new_chat_completion(
     let openai_request: OpenAiChatRequest = serde_json::from_value(req_inner.clone())
         .map_err(|e| CustomError::Anyhow(anyhow::anyhow!("Failed to parse OpenAI request: {}", e)))?;
 
+    // Validate request against configuration
+    if let Err(validation_error) = data.config.validate_chat_request(&openai_request) {
+        return Err(CustomError::Anyhow(anyhow::anyhow!("Request validation failed: {}", validation_error)));
+    }
+
     // Convert to Straico chat request
     let straico_request = convert_openai_request_to_straico(openai_request)
         .map_err(|e| CustomError::Anyhow(anyhow::anyhow!("Content conversion failed: {}", e)))?;
 
     if data.print_request_converted {
-        debug!("\n\n===== New Chat Request converted to Straico: =====");
+        debug!("\n\n===== Chat Request converted to Straico: =====");
         debug!("\n{}", serde_json::to_string_pretty(&straico_request).unwrap());
     }
 
@@ -274,17 +288,33 @@ async fn new_chat_completion(
         .await?;
 
     if data.print_response_raw {
-        debug!("\n\n===== New Chat Response received (raw): =====");
+        debug!("\n\n===== Chat Response received (raw): =====");
         debug!("\n{}", serde_json::to_string_pretty(&response).unwrap());
     }
 
-    // For now, we'll need to parse the response manually since the new endpoint
-    // structure might be different. This will be refined based on actual API responses.
-    let chat_response: ChatResponse = serde_json::from_value(response.data)
+    // Parse the response from the new chat endpoint
+    let mut chat_response: ChatResponse = serde_json::from_value(response.data)
         .map_err(|e| CustomError::Anyhow(anyhow::anyhow!("Failed to parse chat response: {}", e)))?;
 
+    // Add debug information if configured
+    if data.config.include_debug_info {
+        // Add debug metadata to the response
+        if chat_response.id.is_none() {
+            chat_response.id = Some(format!("chatcmpl-{}", generate_request_id()));
+        }
+        if chat_response.object.is_none() {
+            chat_response.object = Some("chat.completion".to_string());
+        }
+        if chat_response.created.is_none() {
+            chat_response.created = Some(std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs());
+        }
+    }
+
     if data.print_response_converted {
-        debug!("\n\n===== New Chat Response converted: =====");
+        debug!("\n\n===== Chat Response converted: =====");
         debug!("\n{}", serde_json::to_string_pretty(&chat_response).unwrap());
     }
 
