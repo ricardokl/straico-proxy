@@ -84,11 +84,10 @@ impl OpenAiContent {
             OpenAiContent::String(text) => {
                 vec![ContentObject::text(text.clone())]
             }
-            OpenAiContent::Array(objects) => {
-                objects.iter().map(|obj| {
-                    ContentObject::new(&obj.content_type, &obj.text)
-                }).collect()
-            }
+            OpenAiContent::Array(objects) => objects
+                .iter()
+                .map(|obj| ContentObject::new(&obj.content_type, &obj.text))
+                .collect(),
         }
     }
 
@@ -114,48 +113,12 @@ impl OpenAiContent {
     pub fn to_string(&self) -> String {
         match self {
             OpenAiContent::String(text) => text.clone(),
-            OpenAiContent::Array(objects) => {
-                objects.iter()
-                    .map(|obj| &obj.text)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join("")
-            }
-        }
-    }
-
-    /// Validates that the content is well-formed.
-    ///
-    /// # Returns
-    /// Ok(()) if valid, Err(String) with error message if invalid
-    pub fn validate(&self) -> Result<(), String> {
-        match self {
-            OpenAiContent::String(text) => {
-                if text.trim().is_empty() {
-                    Err("String content cannot be empty".to_string())
-                } else {
-                    Ok(())
-                }
-            }
-            OpenAiContent::Array(objects) => {
-                if objects.is_empty() {
-                    return Err("Content array cannot be empty".to_string());
-                }
-                
-                for (i, obj) in objects.iter().enumerate() {
-                    if obj.content_type.trim().is_empty() {
-                        return Err(format!("Content object {} has empty type", i));
-                    }
-                    if obj.text.trim().is_empty() {
-                        return Err(format!("Content object {} has empty text", i));
-                    }
-                    // Currently only support "text" type
-                    if obj.content_type != "text" {
-                        return Err(format!("Unsupported content type: {}", obj.content_type));
-                    }
-                }
-                Ok(())
-            }
+            OpenAiContent::Array(objects) => objects
+                .iter()
+                .map(|obj| &obj.text)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(""),
         }
     }
 }
@@ -168,33 +131,6 @@ impl OpenAiChatMessage {
     pub fn to_straico_message(&self) -> ChatMessage {
         ChatMessage::new(&self.role, self.content.to_straico_content())
     }
-
-    /// Validates that the message is well-formed.
-    ///
-    /// # Returns
-    /// Ok(()) if valid, Err(String) with error message if invalid
-    pub fn validate(&self) -> Result<(), String> {
-        // Validate role
-        if self.role.trim().is_empty() {
-            return Err("Message role cannot be empty".to_string());
-        }
-
-        // Validate supported roles
-        match self.role.as_str() {
-            "system" | "user" | "assistant" | "tool" => {},
-            _ => return Err(format!("Unsupported message role: {}", self.role)),
-        }
-
-        // Validate content
-        self.content.validate()?;
-
-        // Tool messages should have tool_call_id
-        if self.role == "tool" && self.tool_call_id.is_none() {
-            return Err("Tool messages must have tool_call_id".to_string());
-        }
-
-        Ok(())
-    }
 }
 
 impl OpenAiChatRequest {
@@ -203,16 +139,13 @@ impl OpenAiChatRequest {
     /// # Returns
     /// A ChatRequest with converted message format
     pub fn to_straico_request(&self) -> Result<ChatRequest, String> {
-        // Validate the request first
-        self.validate()?;
-
-        let messages: Vec<ChatMessage> = self.messages.iter()
+        let messages: Vec<ChatMessage> = self
+            .messages
+            .iter()
             .map(|msg| msg.to_straico_message())
             .collect();
 
-        let mut builder = ChatRequest::builder()
-            .model(&self.model)
-            .messages(messages);
+        let mut builder = ChatRequest::builder().model(&self.model).messages(messages);
 
         // Handle max_tokens vs max_completion_tokens
         let max_tokens = self.max_tokens.or(self.max_completion_tokens);
@@ -226,49 +159,6 @@ impl OpenAiChatRequest {
 
         Ok(builder.build())
     }
-
-    /// Validates that the request is well-formed.
-    ///
-    /// # Returns
-    /// Ok(()) if valid, Err(String) with error message if invalid
-    pub fn validate(&self) -> Result<(), String> {
-        // Validate model
-        if self.model.trim().is_empty() {
-            return Err("Model cannot be empty".to_string());
-        }
-
-        // Validate messages
-        if self.messages.is_empty() {
-            return Err("Messages array cannot be empty".to_string());
-        }
-
-        for (i, message) in self.messages.iter().enumerate() {
-            message.validate()
-                .map_err(|e| format!("Message {}: {}", i, e))?;
-        }
-
-        // Validate temperature range
-        if let Some(temp) = self.temperature {
-            if !(0.0..=2.0).contains(&temp) {
-                return Err("Temperature must be between 0.0 and 2.0".to_string());
-            }
-        }
-
-        // Validate max_tokens
-        if let Some(tokens) = self.max_tokens {
-            if tokens == 0 {
-                return Err("max_tokens must be greater than 0".to_string());
-            }
-        }
-
-        if let Some(tokens) = self.max_completion_tokens {
-            if tokens == 0 {
-                return Err("max_completion_tokens must be greater than 0".to_string());
-            }
-        }
-
-        Ok(())
-    }
 }
 
 impl From<OpenAiContentObject> for ContentObject {
@@ -280,43 +170,5 @@ impl From<OpenAiContentObject> for ContentObject {
 impl From<OpenAiChatMessage> for ChatMessage {
     fn from(msg: OpenAiChatMessage) -> Self {
         msg.to_straico_message()
-    }
-}
-
-/// Utility functions for content format conversion.
-pub mod conversion_utils {
-    use super::*;
-
-    /// Converts a string to OpenAI content format.
-    pub fn string_to_openai_content(text: String) -> OpenAiContent {
-        OpenAiContent::String(text)
-    }
-
-    /// Converts an array of content objects to OpenAI content format.
-    pub fn array_to_openai_content(objects: Vec<OpenAiContentObject>) -> OpenAiContent {
-        OpenAiContent::Array(objects)
-    }
-
-    /// Normalizes OpenAI content to always be in array format.
-    pub fn normalize_to_array(content: OpenAiContent) -> Vec<OpenAiContentObject> {
-        match content {
-            OpenAiContent::String(text) => {
-                vec![OpenAiContentObject {
-                    content_type: "text".to_string(),
-                    text,
-                }]
-            }
-            OpenAiContent::Array(objects) => objects,
-        }
-    }
-
-    /// Validates an entire OpenAI chat request.
-    pub fn validate_openai_request(request: &OpenAiChatRequest) -> Result<(), String> {
-        request.validate()
-    }
-
-    /// Converts OpenAI request to Straico format with validation.
-    pub fn convert_openai_to_straico(request: OpenAiChatRequest) -> Result<ChatRequest, String> {
-        request.to_straico_request()
     }
 }

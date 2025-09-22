@@ -10,8 +10,7 @@ use serde::Serialize;
 /// * `messages` - Array of chat messages with structured content
 /// * `temperature` - Optional parameter controlling randomness in generation (0.0 to 2.0)
 /// * `max_tokens` - Optional maximum number of tokens to generate
-#[derive(Serialize, Debug, Clone)]
-#[derive(Default)]
+#[derive(Serialize, Debug, Clone, Default)]
 pub struct ChatRequest {
     /// The language model to use for generating the chat completion
     pub model: String,
@@ -67,7 +66,6 @@ impl ChatRequest {
         ChatRequestBuilder::default()
     }
 }
-
 
 /// Builder for constructing ChatRequest instances.
 ///
@@ -249,3 +247,4 @@ impl ContentObject {
         }
     }
 }
+

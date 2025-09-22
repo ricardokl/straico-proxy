@@ -1,5 +1,7 @@
+use crate::openai_types::{
+    OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiContentObject,
+};
 use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
-use crate::openai_types::{OpenAiContent, OpenAiChatMessage, OpenAiChatRequest, OpenAiContentObject};
 
 /// Content conversion utilities for transforming OpenAI format to Straico format.
 ///
@@ -40,7 +42,9 @@ pub fn convert_openai_message_to_straico(message: OpenAiChatMessage) -> ChatMess
 ///
 /// # Returns
 /// Result containing ChatRequest in Straico format or error message
-pub fn convert_openai_request_to_straico(openai_request: OpenAiChatRequest) -> Result<ChatRequest, String> {
+pub fn convert_openai_request_to_straico(
+    openai_request: OpenAiChatRequest,
+) -> Result<ChatRequest, String> {
     openai_request.to_straico_request()
 }
 
@@ -69,39 +73,6 @@ pub fn validate_content_objects(content: &[ContentObject]) -> Result<(), String>
         }
     }
     Ok(())
-}
-
-/// Validates OpenAI content format.
-///
-/// # Arguments
-/// * `content` - The OpenAI content to validate
-///
-/// # Returns
-/// Ok(()) if valid, Err(String) with error message if invalid
-pub fn validate_openai_content(content: &OpenAiContent) -> Result<(), String> {
-    content.validate()
-}
-
-/// Validates OpenAI chat message format.
-///
-/// # Arguments
-/// * `message` - The OpenAI chat message to validate
-///
-/// # Returns
-/// Ok(()) if valid, Err(String) with error message if invalid
-pub fn validate_openai_message(message: &OpenAiChatMessage) -> Result<(), String> {
-    message.validate()
-}
-
-/// Validates complete OpenAI chat request.
-///
-/// # Arguments
-/// * `request` - The OpenAI chat request to validate
-///
-/// # Returns
-/// Ok(()) if valid, Err(String) with error message if invalid
-pub fn validate_openai_request(request: &OpenAiChatRequest) -> Result<(), String> {
-    request.validate()
 }
 
 /// Normalizes OpenAI content to always be in array format.
@@ -135,10 +106,13 @@ pub fn normalize_openai_content_to_array(content: OpenAiContent) -> Vec<OpenAiCo
 /// # Returns
 /// OpenAiContent in array format
 pub fn convert_straico_content_to_openai(content: Vec<ContentObject>) -> OpenAiContent {
-    let objects = content.into_iter().map(|obj| OpenAiContentObject {
-        content_type: obj.content_type,
-        text: obj.text,
-    }).collect();
+    let objects = content
+        .into_iter()
+        .map(|obj| OpenAiContentObject {
+            content_type: obj.content_type,
+            text: obj.text,
+        })
+        .collect();
     OpenAiContent::Array(objects)
 }
 
@@ -187,7 +161,8 @@ pub fn split_content_into_chunks(content: &str, max_length: usize) -> Vec<Conten
 /// # Returns
 /// Concatenated text string
 pub fn extract_text_from_content(content: &[ContentObject]) -> String {
-    content.iter()
+    content
+        .iter()
         .map(|obj| &obj.text)
         .cloned()
         .collect::<Vec<_>>()
@@ -228,7 +203,7 @@ mod tests {
     fn test_convert_string_content() {
         let content = OpenAiContent::String("Hello world".to_string());
         let result = convert_openai_content_to_straico(content);
-        
+
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].content_type, "text");
         assert_eq!(result[0].text, "Hello world");
@@ -246,9 +221,9 @@ mod tests {
                 text: " world".to_string(),
             },
         ]);
-        
+
         let result = convert_openai_content_to_straico(content);
-        
+
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].text, "Hello");
         assert_eq!(result[1].text, " world");
@@ -256,17 +231,12 @@ mod tests {
 
     #[test]
     fn test_validate_content_objects() {
-        let valid_content = vec![
-            ContentObject::text("Hello"),
-            ContentObject::text("World"),
-        ];
-        
+        let valid_content = vec![ContentObject::text("Hello"), ContentObject::text("World")];
+
         assert!(validate_content_objects(&valid_content).is_ok());
-        
-        let invalid_content = vec![
-            ContentObject::new("image", "data"),
-        ];
-        
+
+        let invalid_content = vec![ContentObject::new("image", "data")];
+
         assert!(validate_content_objects(&invalid_content).is_err());
     }
 
@@ -274,7 +244,7 @@ mod tests {
     fn test_normalize_content() {
         let string_content = OpenAiContent::String("Test".to_string());
         let normalized = normalize_openai_content_to_array(string_content);
-        
+
         assert_eq!(normalized.len(), 1);
         assert_eq!(normalized[0].content_type, "text");
         assert_eq!(normalized[0].text, "Test");
@@ -284,10 +254,11 @@ mod tests {
     fn test_split_content_into_chunks() {
         let long_text = "a".repeat(150);
         let chunks = split_content_into_chunks(&long_text, 50);
-        
+
         assert_eq!(chunks.len(), 3);
         assert_eq!(chunks[0].text.len(), 50);
         assert_eq!(chunks[1].text.len(), 50);
         assert_eq!(chunks[2].text.len(), 50);
     }
 }
+
