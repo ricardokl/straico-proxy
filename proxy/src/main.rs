@@ -253,7 +253,6 @@ async fn main() -> anyhow::Result<()> {
                 print_response_raw: cli.print_response_raw,
                 print_response_converted: cli.print_response_converted,
             }))
-            .service(server::openai_completion)
             .service(server::openai_chat_completion)
             .default_service(web::to(HttpResponse::NotFound))
     })
