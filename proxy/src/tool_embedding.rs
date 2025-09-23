@@ -70,7 +70,7 @@ pub fn embed_tools_in_chat_request(
 
     openai_request
         .to_straico_request()
-        .map_err(|e| ToolEmbeddingError::ContentMerging(e))
+        .map_err(ToolEmbeddingError::ContentMerging)
 }
 
 fn extract_system_message_content(messages: &mut Vec<OpenAiChatMessage>) -> Option<String> {

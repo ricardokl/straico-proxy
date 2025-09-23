@@ -9,7 +9,6 @@ use crate::endpoints::completion::completion_response::{Content, Message, TextOb
 ///
 /// Note: Direct From implementations for Vec<ContentObject> violate orphan rules
 /// Instead, we provide utility functions for these conversions
-
 impl From<Content> for Vec<ContentObject> {
     /// Converts existing Content enum to new ContentObject format.
     ///

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Configuration options for the proxy server
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
     /// Whether to enable streaming for chat responses
     pub enable_chat_streaming: bool,
@@ -9,14 +9,14 @@ pub struct ProxyConfig {
     pub include_debug_info: bool,
 }
 
-impl Default for ProxyConfig {
-    fn default() -> Self {
-        Self {
-            enable_chat_streaming: false, // Will be implemented in Phase 3
-            include_debug_info: false,
-        }
-    }
-}
+// impl Default for ProxyConfig {
+//     fn default() -> Self {
+//         Self {
+//             enable_chat_streaming: false, // Will be implemented in Phase 3
+//             include_debug_info: false,
+//         }
+//     }
+// }
 
 impl ProxyConfig {
     /// Creates a new configuration with default values

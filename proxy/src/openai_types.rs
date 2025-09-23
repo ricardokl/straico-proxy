@@ -77,6 +77,8 @@ pub struct OpenAiChatRequest {
     pub tool_choice: Option<String>,
 }
 
+use std::fmt;
+
 impl OpenAiContent {
     /// Converts OpenAI content format to Straico ContentObject vector.
     ///
@@ -93,22 +95,16 @@ impl OpenAiContent {
                 .collect(),
         }
     }
+}
 
-    /// Gets the text content as a single string.
-    ///
-    /// For array format, concatenates all text objects.
-    ///
-    /// # Returns
-    /// String representation of the content
-    pub fn to_string(&self) -> String {
+impl fmt::Display for OpenAiContent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OpenAiContent::String(text) => text.clone(),
-            OpenAiContent::Array(objects) => objects
-                .iter()
-                .map(|obj| &obj.text)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(""),
+            OpenAiContent::String(text) => write!(f, "{}", text),
+            OpenAiContent::Array(objects) => {
+                let text: String = objects.iter().map(|obj| &obj.text).cloned().collect();
+                write!(f, "{}", text)
+            }
         }
     }
 }

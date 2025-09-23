@@ -1,11 +1,10 @@
+//! Content conversion utilities for transforming OpenAI format to Straico format.
+//!
+//! This module provides comprehensive conversion functions to handle the dual content
+//! format support required by the OpenAI API compatibility layer.
+
 use crate::openai_types::{OpenAiChatMessage, OpenAiContent, OpenAiContentObject};
 use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
-
-/// Content conversion utilities for transforming OpenAI format to Straico format.
-///
-/// This module provides comprehensive conversion functions to handle the dual content
-/// format support required by the OpenAI API compatibility layer.
-///
 
 /// Converts OpenAI content format to Straico ContentObject vector.
 ///
