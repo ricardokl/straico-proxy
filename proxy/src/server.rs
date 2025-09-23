@@ -1,3 +1,4 @@
+use crate::content_conversion;
 use crate::{
     content_conversion::convert_openai_request_to_straico, openai_types::OpenAiChatRequest,
 };
@@ -300,6 +301,11 @@ async fn openai_chat_completion(
     let mut chat_response: ChatResponse = serde_json::from_value(response.data).map_err(|e| {
         CustomError::Anyhow(anyhow::anyhow!("Failed to parse chat response: {}", e))
     })?;
+
+    // Parse tool calls from assistant messages
+    for choice in &mut chat_response.choices {
+        choice.message = content_conversion::parse_tool_calls(choice.message.clone());
+    }
 
     // Add debug information if configured
     if data.config.include_debug_info {

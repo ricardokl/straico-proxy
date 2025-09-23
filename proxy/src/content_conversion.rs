@@ -1,7 +1,10 @@
 use crate::openai_types::{
     OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiContentObject,
 };
-use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
+use straico_client::endpoints::chat::{
+    ChatMessage, ChatRequest, ChatResponseContent, ChatResponseMessage, ChatToolCall,
+    ContentObject,
+};
 
 /// Content conversion utilities for transforming OpenAI format to Straico format.
 ///
@@ -195,9 +198,223 @@ pub fn ensure_system_message(mut request: ChatRequest) -> ChatRequest {
     request
 }
 
+/// Parses tool calls from a chat message and populates the tool_calls field.
+///
+/// # Arguments
+/// * `message` - The chat message to parse
+///
+/// # Returns
+/// Modified chat message with tool_calls populated if any were found
+pub fn parse_tool_calls(mut message: ChatResponseMessage) -> ChatResponseMessage {
+    if message.role != "assistant" {
+        return message;
+    }
+
+    if let Some(content) = &message.content {
+        let mut tool_calls = Vec::new();
+        let mut text_content = String::new();
+        let mut tool_code_found = false;
+
+        match content {
+            ChatResponseContent::Array(content_objects) => {
+                for content_obj in content_objects {
+                    if content_obj.content_type == "tool_code" {
+                        tool_code_found = true;
+                        if let Ok(parsed_tool_calls) =
+                            serde_json::from_str::<Vec<ChatToolCall>>(&content_obj.text)
+                        {
+                            tool_calls.extend(parsed_tool_calls);
+                        }
+                    } else {
+                        text_content.push_str(&content_obj.text);
+                    }
+                }
+            }
+            ChatResponseContent::Text(text) => {
+                text_content.push_str(text);
+            }
+        }
+
+        if tool_code_found {
+            if text_content.is_empty() {
+                message.content = None;
+            } else {
+                message.content = Some(ChatResponseContent::Text(text_content));
+            }
+
+            if !tool_calls.is_empty() {
+                if let Some(existing_tool_calls) = &mut message.tool_calls {
+                    existing_tool_calls.extend(tool_calls);
+                } else {
+                    message.tool_calls = Some(tool_calls);
+                }
+            }
+        }
+    }
+
+    message
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use straico_client::endpoints::chat::{
+        ChatContentObject, ChatFunctionCall, ChatResponseContent, ChatResponseMessage,
+        ChatToolCall,
+    };
+
+    #[test]
+    fn test_parse_tool_calls_single_tool_call() {
+        let tool_call = ChatToolCall {
+            id: "1".to_string(),
+            function: ChatFunctionCall {
+                name: "test_function".to_string(),
+                arguments: "{}".to_string(),
+            },
+            tool_type: "function".to_string(),
+        };
+        let message = ChatResponseMessage {
+            role: "assistant".to_string(),
+            content: Some(ChatResponseContent::Array(vec![ChatContentObject {
+                content_type: "tool_code".to_string(),
+                text: serde_json::to_string(&vec![tool_call.clone()]).unwrap(),
+            }])),
+            tool_calls: None,
+        };
+
+        let parsed_message = parse_tool_calls(message);
+        assert!(parsed_message.content.is_none());
+        assert!(parsed_message.tool_calls.is_some());
+        let tool_calls = parsed_message.tool_calls.unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "1");
+    }
+
+    #[test]
+    fn test_parse_tool_calls_multiple_tool_calls() {
+        let tool_call1 = ChatToolCall {
+            id: "1".to_string(),
+            function: ChatFunctionCall {
+                name: "test_function1".to_string(),
+                arguments: "{}".to_string(),
+            },
+            tool_type: "function".to_string(),
+        };
+        let tool_call2 = ChatToolCall {
+            id: "2".to_string(),
+            function: ChatFunctionCall {
+                name: "test_function2".to_string(),
+                arguments: "{}".to_string(),
+            },
+            tool_type: "function".to_string(),
+        };
+        let message = ChatResponseMessage {
+            role: "assistant".to_string(),
+            content: Some(ChatResponseContent::Array(vec![ChatContentObject {
+                content_type: "tool_code".to_string(),
+                text: serde_json::to_string(&vec![tool_call1.clone(), tool_call2.clone()])
+                    .unwrap(),
+            }])),
+            tool_calls: None,
+        };
+
+        let parsed_message = parse_tool_calls(message);
+        assert!(parsed_message.content.is_none());
+        assert!(parsed_message.tool_calls.is_some());
+        let tool_calls = parsed_message.tool_calls.unwrap();
+        assert_eq!(tool_calls.len(), 2);
+        assert_eq!(tool_calls[0].id, "1");
+        assert_eq!(tool_calls[1].id, "2");
+    }
+
+    #[test]
+    fn test_parse_tool_calls_mixed_content() {
+        let tool_call = ChatToolCall {
+            id: "1".to_string(),
+            function: ChatFunctionCall {
+                name: "test_function".to_string(),
+                arguments: "{}".to_string(),
+            },
+            tool_type: "function".to_string(),
+        };
+        let message = ChatResponseMessage {
+            role: "assistant".to_string(),
+            content: Some(ChatResponseContent::Array(vec![
+                ChatContentObject {
+                    content_type: "text".to_string(),
+                    text: "Hello ".to_string(),
+                },
+                ChatContentObject {
+                    content_type: "tool_code".to_string(),
+                    text: serde_json::to_string(&vec![tool_call.clone()]).unwrap(),
+                },
+                ChatContentObject {
+                    content_type: "text".to_string(),
+                    text: "world!".to_string(),
+                },
+            ])),
+            tool_calls: None,
+        };
+
+        let parsed_message = parse_tool_calls(message);
+        assert!(parsed_message.content.is_some());
+        let content = parsed_message.content.unwrap().as_string();
+        assert_eq!(content, "Hello world!");
+        assert!(parsed_message.tool_calls.is_some());
+        let tool_calls = parsed_message.tool_calls.unwrap();
+        assert_eq!(tool_calls.len(), 1);
+        assert_eq!(tool_calls[0].id, "1");
+    }
+
+    #[test]
+    fn test_parse_tool_calls_invalid_json() {
+        let message = ChatResponseMessage {
+            role: "assistant".to_string(),
+            content: Some(ChatResponseContent::Array(vec![ChatContentObject {
+                content_type: "tool_code".to_string(),
+                text: "[{]".to_string(),
+            }])),
+            tool_calls: None,
+        };
+
+        let parsed_message = parse_tool_calls(message);
+        assert!(parsed_message.content.is_none());
+        assert!(parsed_message.tool_calls.is_none());
+    }
+
+    #[test]
+    fn test_parse_tool_calls_no_tool_code() {
+        let message = ChatResponseMessage {
+            role: "assistant".to_string(),
+            content: Some(ChatResponseContent::Array(vec![ChatContentObject {
+                content_type: "text".to_string(),
+                text: "Hello world".to_string(),
+            }])),
+            tool_calls: None,
+        };
+
+        let parsed_message = parse_tool_calls(message.clone());
+        assert!(parsed_message.content.is_some());
+        let content = parsed_message.content.unwrap().as_string();
+        assert_eq!(content, "Hello world");
+        assert!(parsed_message.tool_calls.is_none());
+    }
+
+    #[test]
+    fn test_parse_tool_calls_non_assistant_role() {
+        let message = ChatResponseMessage {
+            role: "user".to_string(),
+            content: Some(ChatResponseContent::Array(vec![ChatContentObject {
+                content_type: "tool_code".to_string(),
+                text: "[]".to_string(),
+            }])),
+            tool_calls: None,
+        };
+
+        let parsed_message = parse_tool_calls(message.clone());
+        assert!(parsed_message.content.is_some());
+        assert!(parsed_message.tool_calls.is_none());
+    }
 
     #[test]
     fn test_convert_string_content() {
