@@ -1,6 +1,4 @@
-use crate::openai_types::{
-    OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiContentObject,
-};
+use crate::openai_types::{OpenAiChatMessage, OpenAiContent, OpenAiContentObject};
 use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
 
 /// Content conversion utilities for transforming OpenAI format to Straico format.
@@ -246,4 +244,3 @@ mod tests {
         assert_eq!(chunks[2].text.len(), 50);
     }
 }
-

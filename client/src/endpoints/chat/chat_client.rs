@@ -1,6 +1,9 @@
 use crate::{
-    client::{StraicoClient, StraicoRequestBuilder, NoApiKey},
-    endpoints::{ApiResponseData, chat::{ChatRequest, ChatResponse}},
+    client::{NoApiKey, StraicoClient, StraicoRequestBuilder},
+    endpoints::{
+        ApiResponseData,
+        chat::{ChatRequest, ChatResponse},
+    },
     error::StraicoError,
 };
 
@@ -22,7 +25,7 @@ impl ChatClientExt for StraicoClient {
     /// # Example
     /// ```rust,no_run
     /// use straico_client::{StraicoClient, endpoints::chat::{ChatClientExt, builders::simple_chat_request}};
-    /// 
+    ///
     /// async fn run() -> Result<(), Box<dyn std::error::Error>> {
     ///     let client = StraicoClient::new();
     ///     let chat_request = simple_chat_request("gpt-3.5-turbo", "Hello");
@@ -55,8 +58,7 @@ impl ChatResponseExt for ApiResponseData {
     /// # Errors
     /// Returns `StraicoError::Serde` if the response data cannot be parsed as a ChatResponse
     fn get_chat_response(self) -> Result<ChatResponse, StraicoError> {
-        self.get_chat_response()
-            .map_err(StraicoError::Serde)
+        self.get_chat_response().map_err(StraicoError::Serde)
     }
 }
 
@@ -74,8 +76,8 @@ pub mod builders {
     /// # Returns
     /// A ChatRequest ready to be sent
     pub fn simple_chat_request<S: Into<String>, M: Into<String>>(
-        model: S, 
-        message: M
+        model: S,
+        message: M,
     ) -> ChatRequest {
         ChatRequest::builder()
             .model(model)
@@ -138,9 +140,7 @@ pub mod builders {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> ChatRequest {
-        let mut builder = ChatRequest::builder()
-            .model(model)
-            .messages(messages);
+        let mut builder = ChatRequest::builder().model(model).messages(messages);
 
         if let Some(temp) = temperature {
             builder = builder.temperature(temp);
@@ -188,7 +188,9 @@ pub mod response_utils {
     /// # Returns
     /// Vector of content strings from all choices
     pub fn get_all_contents(response: &ChatResponse) -> Vec<String> {
-        response.choices.iter()
+        response
+            .choices
+            .iter()
             .filter_map(|choice| choice.content_string())
             .collect()
     }
@@ -201,7 +203,8 @@ pub mod response_utils {
     /// # Returns
     /// Option containing the finish reason, or None if no choices exist
     pub fn get_finish_reason(response: &ChatResponse) -> Option<&str> {
-        response.first_choice()
+        response
+            .first_choice()
             .map(|choice| choice.finish_reason.as_str())
     }
 

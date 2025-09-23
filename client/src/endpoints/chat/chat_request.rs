@@ -247,4 +247,3 @@ impl ContentObject {
         }
     }
 }
-

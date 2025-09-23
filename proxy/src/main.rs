@@ -1,17 +1,10 @@
-use actix_web::{App, HttpResponse, HttpServer, web};
+use actix_web::{web, App, HttpResponse, HttpServer};
 use anyhow::Context;
 use clap::Parser;
 use flexi_logger::{FileSpec, Logger, WriteMode};
 use log::{info, warn};
 use straico_client::client::StraicoClient;
-use straico_proxy::{
-    cli::Cli,
-    config::ProxyConfig,
-    config_manager::ConfigManager,
-    server,
-};
-
-
+use straico_proxy::{cli::Cli, config_manager::ConfigManager, server};
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
@@ -53,7 +46,8 @@ async fn main() -> anyhow::Result<()> {
     let effective_config = config_manager.get_effective_config();
 
     // Set up logging
-    let log_level = cli.log_level
+    let log_level = cli
+        .log_level
         .as_deref()
         .or(Some(effective_config.environment.log_level.as_str()))
         .unwrap_or({
@@ -92,11 +86,13 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    let host = cli.environment.as_deref()
+    let host = cli
+        .environment
+        .as_deref()
         .map(|_| effective_config.environment.host.clone())
         .unwrap_or(cli.host);
     let port = effective_config.environment.port;
-    
+
     let addr = format!("{}:{}", host, port);
     info!("Starting Straico proxy server...");
     info!("Environment: {}", effective_config.environment.environment);
@@ -117,33 +113,29 @@ async fn main() -> anyhow::Result<()> {
 
     // Display configuration summary
     info!("Configuration Summary:");
-    info!("  - Environment: {}", effective_config.environment.environment);
-    info!("  - Use new chat endpoint: {}", effective_config.proxy.use_new_chat_endpoint);
-    info!("  - Validate requests: {}", effective_config.proxy.validate_requests);
-    info!("  - Include debug info: {}", effective_config.proxy.include_debug_info);
-    info!("  - Enabled features: {:?}", effective_config.get_enabled_features());
-
-    // Apply configuration limits
-    let mut proxy_config = effective_config.proxy.clone();
-    if let Some(max_messages) = cli.max_messages {
-        proxy_config.max_messages_per_request = Some(max_messages);
-    }
-    if let Some(max_content) = cli.max_content_length {
-        proxy_config.max_content_length = Some(max_content);
-    }
+    info!(
+        "  - Environment: {}",
+        effective_config.environment.environment
+    );
+    info!(
+        "  - Include debug info: {}",
+        effective_config.proxy.include_debug_info
+    );
+    info!(
+        "  - Enabled features: {:?}",
+        effective_config.get_enabled_features()
+    );
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(server::AppState {
                 client: StraicoClient::new(),
                 key: api_key.clone(),
-                config: proxy_config.clone(),
+                config: effective_config.proxy.clone(),
                 print_request_raw: cli.print_request_raw,
                 print_request_converted: cli.print_request_converted,
                 print_response_raw: cli.print_response_raw,
                 print_response_converted: cli.print_response_converted,
-                use_new_chat_endpoint: effective_config.proxy.use_new_chat_endpoint,
-                force_new_endpoint_for_tools: effective_config.proxy.force_new_endpoint_for_tools,
             }))
             .service(server::openai_chat_completion)
             .default_service(web::to(HttpResponse::NotFound))

@@ -1,9 +1,9 @@
 use actix_web::{http::StatusCode, HttpResponse, ResponseError};
+use reqwest::Error as ReqwestError;
 use serde_json::Value;
 use std::fmt::Debug;
-use reqwest::Error as ReqwestError;
-use thiserror::Error;
 use straico_client::error::StraicoError;
+use thiserror::Error;
 
 use crate::streaming::create_error_chunk;
 use anyhow::Error as AnyhowError;

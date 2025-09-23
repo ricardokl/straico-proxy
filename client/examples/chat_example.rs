@@ -1,9 +1,7 @@
 use straico_client::{
     StraicoClient,
     endpoints::chat::{
-        ChatRequest, ChatMessage, ContentObject,
-        ChatClientExt, ChatResponseExt,
-        builders::*,
+        ChatClientExt, ChatMessage, ChatRequest, ChatResponseExt, ContentObject, builders::*,
         response_utils::*,
     },
 };
@@ -11,16 +9,14 @@ use straico_client::{
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = StraicoClient::new();
-    let api_key = std::env::var("STRAICO_API_KEY")
-        .expect("STRAICO_API_KEY environment variable must be set");
+    let api_key =
+        std::env::var("STRAICO_API_KEY").expect("STRAICO_API_KEY environment variable must be set");
 
     println!("=== Straico Chat Endpoint Examples ===\n");
 
     println!("1. Simple Chat Request:");
-    let simple_request = simple_chat_request(
-        "gpt-3.5-turbo",
-        "Hello! Can you explain what Rust is?"
-    );
+    let simple_request =
+        simple_chat_request("gpt-3.5-turbo", "Hello! Can you explain what Rust is?");
 
     let response = client
         .clone()
@@ -39,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let system_user_request = system_user_chat_request(
         "gpt-3.5-turbo",
         "You are a helpful programming tutor. Explain concepts clearly and provide examples.",
-        "What are the main benefits of Rust's ownership system?"
+        "What are the main benefits of Rust's ownership system?",
     );
 
     let response = client
@@ -63,10 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ChatMessage::user("What's the population of that city?"),
     ];
 
-    let conversation_request = conversation_chat_request(
-        "gpt-3.5-turbo",
-        conversation_messages
-    );
+    let conversation_request = conversation_chat_request("gpt-3.5-turbo", conversation_messages);
 
     let response = client
         .clone()
@@ -87,12 +80,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ChatMessage::user("Write a short poem about programming."),
     ];
 
-    let advanced_request = advanced_chat_request(
-        "gpt-3.5-turbo",
-        advanced_messages,
-        Some(0.8),
-        Some(150),
-    );
+    let advanced_request =
+        advanced_chat_request("gpt-3.5-turbo", advanced_messages, Some(0.8), Some(150));
 
     let response = client
         .clone()
@@ -111,7 +100,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let builder_request = ChatRequest::builder()
         .model("gpt-3.5-turbo")
         .message(ChatMessage::system("You are a helpful assistant."))
-        .message(ChatMessage::user("Explain quantum computing in simple terms."))
+        .message(ChatMessage::user(
+            "Explain quantum computing in simple terms.",
+        ))
         .temperature(0.3)
         .max_tokens(200)
         .build();
@@ -125,16 +116,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
 
     let chat_response = response.get_chat_response()?;
-    
+
     println!("Response analysis:");
-    println!("- Content: {}", get_first_content(&chat_response).unwrap_or("No content".to_string()));
-    println!("- Finish reason: {}", get_finish_reason(&chat_response).unwrap_or("Unknown"));
+    println!(
+        "- Content: {}",
+        get_first_content(&chat_response).unwrap_or("No content".to_string())
+    );
+    println!(
+        "- Finish reason: {}",
+        get_finish_reason(&chat_response).unwrap_or("Unknown")
+    );
     println!("- Was truncated: {}", was_truncated(&chat_response));
     println!("- Has tool calls: {}", has_tool_calls(&chat_response));
-    
+
     if let Some(usage) = get_usage(&chat_response) {
-        println!("- Token usage: {} prompt + {} completion = {} total",
-            usage.prompt_tokens, usage.completion_tokens, usage.total_tokens);
+        println!(
+            "- Token usage: {} prompt + {} completion = {} total",
+            usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
+        );
     }
 
     println!("\n6. Structured Content Objects:");
@@ -143,7 +142,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         vec![
             ContentObject::text("Please analyze this text: "),
             ContentObject::text("Rust is a systems programming language."),
-        ]
+        ],
     );
 
     let structured_request = ChatRequest::builder()

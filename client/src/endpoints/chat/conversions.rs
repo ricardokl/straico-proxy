@@ -1,6 +1,6 @@
+use super::{ChatContentObject, ChatMessage, ChatRequest, ChatResponseContent, ContentObject};
 use crate::chat::{Chat, Tool};
 use crate::endpoints::completion::completion_response::{Content, Message, TextObject};
-use super::{ChatMessage, ChatRequest, ContentObject, ChatResponseContent, ChatContentObject};
 
 /// Conversion utilities for the new chat endpoint format.
 ///
@@ -21,13 +21,12 @@ impl From<Content> for Vec<ContentObject> {
     fn from(content: Content) -> Self {
         match content {
             Content::Text(text) => vec![ContentObject::text(text.as_ref())],
-            Content::TextArray(text_objects) => {
-                text_objects.into_iter().map(|obj| {
-                    match obj {
-                        TextObject::Text { text } => ContentObject::text(text.as_ref()),
-                    }
-                }).collect()
-            }
+            Content::TextArray(text_objects) => text_objects
+                .into_iter()
+                .map(|obj| match obj {
+                    TextObject::Text { text } => ContentObject::text(text.as_ref()),
+                })
+                .collect(),
         }
     }
 }
@@ -42,22 +41,19 @@ impl From<Message> for ChatMessage {
     /// A ChatMessage with the same role and converted content
     fn from(message: Message) -> Self {
         match message {
-            Message::User { content } => {
-                ChatMessage::new("user", content.into())
-            }
-            Message::Assistant { content, tool_calls: _ } => {
+            Message::User { content } => ChatMessage::new("user", content.into()),
+            Message::Assistant {
+                content,
+                tool_calls: _,
+            } => {
                 // Note: Tool calls are handled separately in the new format
                 match content {
                     Some(content) => ChatMessage::new("assistant", content.into()),
                     None => ChatMessage::new("assistant", vec![]),
                 }
             }
-            Message::System { content } => {
-                ChatMessage::new("system", content.into())
-            }
-            Message::Tool { content } => {
-                ChatMessage::new("tool", content.into())
-            }
+            Message::System { content } => ChatMessage::new("system", content.into()),
+            Message::Tool { content } => ChatMessage::new("tool", content.into()),
         }
     }
 }
@@ -87,9 +83,12 @@ impl From<Vec<ChatContentObject>> for Content {
         if objects.len() == 1 {
             Content::Text(objects[0].text.clone().into())
         } else {
-            let text_objects = objects.into_iter().map(|obj| {
-                TextObject::Text { text: obj.text.into() }
-            }).collect();
+            let text_objects = objects
+                .into_iter()
+                .map(|obj| TextObject::Text {
+                    text: obj.text.into(),
+                })
+                .collect();
             Content::TextArray(text_objects)
         }
     }
@@ -213,7 +212,7 @@ pub mod utils {
         if vectors.is_empty() {
             return Vec::new();
         }
-        
+
         let mut result = vectors.remove(0);
         for mut vector in vectors {
             result.append(&mut vector);
@@ -223,7 +222,8 @@ pub mod utils {
 
     /// Converts ContentObject vector to a single text string.
     pub fn content_objects_to_string(objects: &[ContentObject]) -> String {
-        objects.iter()
+        objects
+            .iter()
             .map(|obj| &obj.text)
             .cloned()
             .collect::<Vec<_>>()
@@ -237,7 +237,10 @@ pub mod utils {
 
     /// Validates that a ChatMessage has valid content.
     pub fn validate_message_content(message: &ChatMessage) -> bool {
-        !message.content.is_empty() && 
-        message.content.iter().any(|obj| !obj.text.trim().is_empty())
+        !message.content.is_empty()
+            && message
+                .content
+                .iter()
+                .any(|obj| !obj.text.trim().is_empty())
     }
 }

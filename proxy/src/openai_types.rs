@@ -94,19 +94,6 @@ impl OpenAiContent {
         }
     }
 
-    /// Checks if the content is empty.
-    ///
-    /// # Returns
-    /// True if the content is empty or contains only empty text
-    pub fn is_empty(&self) -> bool {
-        match self {
-            OpenAiContent::String(text) => text.trim().is_empty(),
-            OpenAiContent::Array(objects) => {
-                objects.is_empty() || objects.iter().all(|obj| obj.text.trim().is_empty())
-            }
-        }
-    }
-
     /// Gets the text content as a single string.
     ///
     /// For array format, concatenates all text objects.

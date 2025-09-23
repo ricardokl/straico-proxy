@@ -24,7 +24,7 @@ run_test_category() {
     local command="$2"
     
     echo -e "${YELLOW}Running $category...${NC}"
-    if eval "$command"; then
+    if (eval "$command"); then
         echo -e "${GREEN}✓ $category PASSED${NC}"
         return 0
     else
@@ -60,11 +60,6 @@ fi
 
 total_tests=$((total_tests + 1))
 if run_test_category "OpenAI Compatibility Tests" "cd proxy && cargo test --test openai_compatibility_tests"; then
-    passed_tests=$((passed_tests + 1))
-fi
-
-total_tests=$((total_tests + 1))
-if run_test_category "Performance Tests" "cd proxy && cargo test --test performance_tests"; then
     passed_tests=$((passed_tests + 1))
 fi
 

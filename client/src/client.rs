@@ -4,9 +4,8 @@ use std::{fmt::Display, marker::PhantomData};
 
 use crate::{
     endpoints::{
-        completion::completion_request::CompletionRequest, 
-        chat::chat_request::ChatRequest,
-        ApiResponseData
+        ApiResponseData, chat::chat_request::ChatRequest,
+        completion::completion_request::CompletionRequest,
     },
     error::StraicoError,
 };

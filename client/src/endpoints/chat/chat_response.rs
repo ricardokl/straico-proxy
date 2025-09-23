@@ -188,7 +188,10 @@ impl ChatResponse {
     /// True if any choice contains tool calls, false otherwise
     pub fn has_tool_calls(&self) -> bool {
         self.choices.iter().any(|choice| {
-            choice.message.tool_calls.as_ref()
+            choice
+                .message
+                .tool_calls
+                .as_ref()
                 .is_some_and(|calls| !calls.is_empty())
         })
     }
@@ -208,7 +211,10 @@ impl ChatChoice {
     /// # Returns
     /// An Option containing the content string, or None if no content exists
     pub fn content_string(&self) -> Option<String> {
-        self.message.content.as_ref().map(|content| content.as_string())
+        self.message
+            .content
+            .as_ref()
+            .map(|content| content.as_string())
     }
 }
 
@@ -220,13 +226,12 @@ impl ChatResponseContent {
     pub fn as_string(&self) -> String {
         match self {
             ChatResponseContent::Text(text) => text.clone(),
-            ChatResponseContent::Array(objects) => {
-                objects.iter()
-                    .map(|obj| &obj.text)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .join("")
-            }
+            ChatResponseContent::Array(objects) => objects
+                .iter()
+                .map(|obj| &obj.text)
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(""),
         }
     }
 
