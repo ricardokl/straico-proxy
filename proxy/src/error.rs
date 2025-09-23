@@ -20,6 +20,16 @@ pub enum CustomError {
     ResponseParse(Value),
     #[error("An internal error occurred")]
     Anyhow(#[from] AnyhowError),
+    #[error("Tool embedding error: {0}")]
+    ToolEmbedding(#[from] crate::tool_embedding::ToolEmbeddingError),
+    #[error("Request validation error: {0}")]
+    RequestValidation(String),
+}
+
+impl From<String> for CustomError {
+    fn from(s: String) -> Self {
+        CustomError::RequestValidation(s)
+    }
 }
 
 impl CustomError {
@@ -36,13 +46,23 @@ impl ResponseError for CustomError {
             CustomError::Straico(_) => StatusCode::INTERNAL_SERVER_ERROR,
             CustomError::ResponseParse(_) => StatusCode::INTERNAL_SERVER_ERROR,
             CustomError::Anyhow(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            CustomError::ToolEmbedding(_) => StatusCode::BAD_REQUEST,
+            CustomError::RequestValidation(_) => StatusCode::BAD_REQUEST,
         }
     }
 
     fn error_response(&self) -> HttpResponse {
+        let error_message = match self {
+            CustomError::ToolEmbedding(e) => format!("Tool processing failed: {}", e),
+            CustomError::RequestValidation(e) => format!("Invalid request: {}", e),
+            _ => self.to_string(),
+        };
+
         HttpResponse::build(self.status_code()).json(serde_json::json!({
             "error": {
-                "message": self.to_string()
+                "message": error_message,
+                "type": "invalid_request_error",
+                "code": null
             }
         }))
     }

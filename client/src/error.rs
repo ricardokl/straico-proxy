@@ -15,4 +15,7 @@ pub enum StraicoError {
     /// An error occurred while performing a regex operation.
     #[error("regex error: {0}")]
     Regex(#[from] regex::Error),
+    /// An error occurred while parsing the response from the API.
+    #[error("response parse error: {0}")]
+    ResponseParse(String),
 }

@@ -1,6 +1,10 @@
 use crate::openai_types::OpenAiChatRequest;
 use straico_client::endpoints::chat::ChatResponse;
 use serde_json::Value;
+use straico_client::endpoints::completion::completion_response::{
+    Completion, Choice as CompletionChoice, Message as CompletionMessage, Content, ToolCall, Usage,
+    FunctionData,
+};
 
 /// Utilities for processing and enhancing responses from the chat endpoint
 pub mod chat_response_utils {
@@ -232,5 +236,64 @@ pub mod request_utils {
         pub temperature: Option<f32>,
         pub max_tokens: Option<u32>,
         pub stream: bool,
+    }
+}
+
+pub mod completion_response_utils {
+    use super::*;
+    use straico_client::endpoints::chat::{ChatChoice, ChatResponseMessage, ChatResponse};
+
+    pub fn convert_chat_response_to_completion(
+        chat_response: ChatResponse,
+        request_id: &str,
+        created_timestamp: u64,
+    ) -> Completion {
+        let choices = chat_response.choices.into_iter().map(|chat_choice| {
+            CompletionChoice {
+                message: convert_chat_message_to_completion_message(chat_choice.message),
+                index: chat_choice.index.unwrap_or(0),
+                finish_reason: chat_choice.finish_reason.into(),
+            }
+        }).collect();
+
+        Completion {
+            choices,
+            object: "chat.completion".into(),
+            id: request_id.into(),
+            model: chat_response.model.into(),
+            created: created_timestamp,
+            usage: chat_response.usage.map_or_else(
+                || Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+                |usage| Usage {
+                    prompt_tokens: usage.prompt_tokens,
+                    completion_tokens: usage.completion_tokens,
+                    total_tokens: usage.total_tokens,
+                }
+            ),
+        }
+    }
+
+    fn convert_chat_message_to_completion_message(chat_message: ChatResponseMessage) -> CompletionMessage {
+        match chat_message.role.as_str() {
+            "assistant" => CompletionMessage::Assistant {
+                content: chat_message.content.map(|c| Content::Text(c.as_string().into())),
+                tool_calls: chat_message.tool_calls.map(|tcs| {
+                    tcs.into_iter().map(|tc| ToolCall::Function {
+                        id: tc.id,
+                        function: FunctionData {
+                            name: tc.function.name,
+                            arguments: serde_json::from_str(&tc.function.arguments).unwrap_or_default(),
+                        },
+                    }).collect()
+                }),
+            },
+            "user" => CompletionMessage::User {
+                content: Content::Text(chat_message.content.map(|c| c.as_string()).unwrap_or_default().into()),
+            },
+            "system" => CompletionMessage::System {
+                content: Content::Text(chat_message.content.map(|c| c.as_string()).unwrap_or_default().into()),
+            },
+            _ => panic!("Unknown role"),
+        }
     }
 }

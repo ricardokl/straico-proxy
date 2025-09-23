@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub struct ProxyConfig {
     /// Whether to use the new chat endpoint by default
     pub use_new_chat_endpoint: bool,
+    /// Force tool calls to use new endpoint (even if legacy is default)
+    pub force_new_endpoint_for_tools: bool,
     /// Whether to enable streaming for chat responses
     pub enable_chat_streaming: bool,
     /// Whether to validate OpenAI requests before conversion
@@ -21,6 +23,7 @@ impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
             use_new_chat_endpoint: true,
+            force_new_endpoint_for_tools: false,
             enable_chat_streaming: false, // Will be implemented in Phase 3
             validate_requests: true,
             include_debug_info: false,
@@ -88,18 +91,33 @@ impl ProxyConfig {
 
     /// Validates a chat request against the configuration limits
     pub fn validate_chat_request(&self, request: &crate::openai_types::OpenAiChatRequest) -> Result<(), String> {
+        log::info!("Validating chat request: {:?}", request);
         if !self.validate_requests {
+            log::info!("Request validation is disabled.");
             return Ok(());
         }
 
+        if request.model.is_empty() {
+            let err_msg = "Model field cannot be empty".to_string();
+            log::warn!("{}", err_msg);
+            return Err(err_msg);
+        }
+
         // Check message count limit
+        if request.messages.is_empty() {
+            let err_msg = "Messages array cannot be empty".to_string();
+            log::warn!("{}", err_msg);
+            return Err(err_msg);
+        }
         if let Some(max_messages) = self.max_messages_per_request {
             if request.messages.len() > max_messages {
-                return Err(format!(
+                let err_msg = format!(
                     "Too many messages: {} (max: {})",
                     request.messages.len(),
                     max_messages
-                ));
+                );
+                log::warn!("{}", err_msg);
+                return Err(err_msg);
             }
         }
 
@@ -108,16 +126,26 @@ impl ProxyConfig {
             for (i, message) in request.messages.iter().enumerate() {
                 let content_length = message.content.to_string().len();
                 if content_length > max_length {
-                    return Err(format!(
+                    let err_msg = format!(
                         "Message {} content too long: {} characters (max: {})",
                         i,
                         content_length,
                         max_length
-                    ));
+                    );
+                    log::warn!("{}", err_msg);
+                    return Err(err_msg);
                 }
             }
         }
+        if let Some(temperature) = request.temperature {
+            if !(0.0..=2.0).contains(&temperature) {
+                let err_msg = format!("Invalid temperature: {}", temperature);
+                log::warn!("{}", err_msg);
+                return Err(err_msg);
+            }
+        }
 
+        log::info!("Request validation successful.");
         Ok(())
     }
 

@@ -20,16 +20,20 @@ impl ChatClientExt for StraicoClient {
     /// A `StraicoRequestBuilder` configured for making chat completion requests
     ///
     /// # Example
-    /// ```rust
-    /// use straico_client::{StraicoClient, endpoints::chat::ChatClientExt};
+    /// ```rust,no_run
+    /// use straico_client::{StraicoClient, endpoints::chat::{ChatClientExt, builders::simple_chat_request}};
     /// 
-    /// let client = StraicoClient::new();
-    /// let response = client
-    ///     .chat_completions()
-    ///     .bearer_auth("your-api-key")
-    ///     .json(chat_request)
-    ///     .send()
-    ///     .await?;
+    /// async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let client = StraicoClient::new();
+    ///     let chat_request = simple_chat_request("gpt-3.5-turbo", "Hello");
+    ///     let response = client
+    ///         .chat_completions()
+    ///         .bearer_auth("your-api-key")
+    ///         .json(chat_request)
+    ///         .send()
+    ///         .await?;
+    ///     Ok(())
+    /// }
     /// ```
     fn chat_completions(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest> {
         self.chat()

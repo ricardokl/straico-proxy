@@ -1,5 +1,5 @@
 use crate::endpoints::completion::completion_request::Prompt;
-use crate::endpoints::completion::completion_response::{Message, ToolCall};
+pub use crate::endpoints::completion::completion_response::{Message, ToolCall};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::borrow::Cow;
@@ -14,7 +14,13 @@ use std::ops::Deref;
 /// This struct implements `Deref` to provide direct access to the underlying vector
 /// operations while maintaining type safety and encapsulation.
 #[derive(Deserialize, Clone, Debug)]
-pub struct Chat(Vec<Message>);
+pub struct Chat(pub Vec<Message>);
+
+impl Chat {
+    pub fn new(messages: Vec<Message>) -> Self {
+        Self(messages)
+    }
+}
 
 impl Deref for Chat {
     type Target = Vec<Message>;
