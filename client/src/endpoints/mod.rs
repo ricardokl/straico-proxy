@@ -1,9 +1,9 @@
 pub mod chat;
 pub mod completion;
 
-use serde::{Deserialize, Serialize};
-use crate::endpoints::completion::completion_response::CompletionData;
 use crate::endpoints::chat::chat_response::ChatResponse;
+use crate::endpoints::completion::completion_response::CompletionData;
+use serde::{Deserialize, Serialize};
 
 /// Generic response wrapper for Straico API responses
 #[derive(Serialize, Deserialize, Debug)]

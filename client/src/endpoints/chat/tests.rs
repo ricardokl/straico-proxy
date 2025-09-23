@@ -1,19 +1,18 @@
 #[cfg(test)]
 mod tests {
-    
+
     use crate::{
         StraicoClient,
         endpoints::chat::{
-            ChatRequest, ChatMessage, ContentObject, ChatResponse, ChatChoice,
-            ChatResponseMessage, ChatResponseContent, ChatUsage,
-            builders::*, response_utils::*, ChatClientExt,
+            ChatChoice, ChatClientExt, ChatMessage, ChatRequest, ChatResponse, ChatResponseContent,
+            ChatResponseMessage, ChatUsage, ContentObject, builders::*, response_utils::*,
         },
     };
 
     #[test]
     fn test_chat_client_extension() {
         let client = StraicoClient::new();
-        
+
         // Test that the chat_completions method exists and returns the right type
         let _builder = client.chat_completions();
         // If this compiles, the extension trait is working
@@ -22,7 +21,7 @@ mod tests {
     #[test]
     fn test_simple_chat_request_builder() {
         let request = simple_chat_request("gpt-3.5-turbo", "Hello world");
-        
+
         assert_eq!(request.model, "gpt-3.5-turbo");
         assert_eq!(request.messages.len(), 1);
         assert_eq!(request.messages[0].role, "user");
@@ -31,12 +30,8 @@ mod tests {
 
     #[test]
     fn test_system_user_chat_request_builder() {
-        let request = system_user_chat_request(
-            "gpt-4",
-            "You are helpful",
-            "What is Rust?"
-        );
-        
+        let request = system_user_chat_request("gpt-4", "You are helpful", "What is Rust?");
+
         assert_eq!(request.model, "gpt-4");
         assert_eq!(request.messages.len(), 2);
         assert_eq!(request.messages[0].role, "system");
@@ -52,9 +47,9 @@ mod tests {
             ChatMessage::user("User message"),
             ChatMessage::assistant("Assistant message"),
         ];
-        
+
         let request = conversation_chat_request("claude-3", messages.clone());
-        
+
         assert_eq!(request.model, "claude-3");
         assert_eq!(request.messages.len(), 3);
         assert_eq!(request.messages[0].role, "system");
@@ -64,17 +59,10 @@ mod tests {
 
     #[test]
     fn test_advanced_chat_request_builder() {
-        let messages = vec![
-            ChatMessage::user("Test message"),
-        ];
-        
-        let request = advanced_chat_request(
-            "gpt-3.5-turbo",
-            messages,
-            Some(0.8),
-            Some(150)
-        );
-        
+        let messages = vec![ChatMessage::user("Test message")];
+
+        let request = advanced_chat_request("gpt-3.5-turbo", messages, Some(0.8), Some(150));
+
         assert_eq!(request.model, "gpt-3.5-turbo");
         assert_eq!(request.temperature, Some(0.8));
         assert_eq!(request.max_tokens, Some(150));
@@ -82,17 +70,10 @@ mod tests {
 
     #[test]
     fn test_advanced_chat_request_builder_no_params() {
-        let messages = vec![
-            ChatMessage::user("Test message"),
-        ];
-        
-        let request = advanced_chat_request(
-            "gpt-3.5-turbo",
-            messages,
-            None,
-            None
-        );
-        
+        let messages = vec![ChatMessage::user("Test message")];
+
+        let request = advanced_chat_request("gpt-3.5-turbo", messages, None, None);
+
         assert_eq!(request.model, "gpt-3.5-turbo");
         assert_eq!(request.temperature, None);
         assert_eq!(request.max_tokens, None);
@@ -102,7 +83,7 @@ mod tests {
     fn test_response_utils_get_first_content() {
         let response = create_test_chat_response();
         let content = get_first_content(&response);
-        
+
         assert_eq!(content, Some("Test response content".to_string()));
     }
 
@@ -110,7 +91,7 @@ mod tests {
     fn test_response_utils_has_tool_calls() {
         let response = create_test_chat_response();
         assert!(!has_tool_calls(&response));
-        
+
         let response_with_tools = create_test_chat_response_with_tools();
         assert!(has_tool_calls(&response_with_tools));
     }
@@ -119,7 +100,7 @@ mod tests {
     fn test_response_utils_get_all_contents() {
         let response = create_test_chat_response_multiple_choices();
         let contents = get_all_contents(&response);
-        
+
         assert_eq!(contents.len(), 2);
         assert_eq!(contents[0], "First choice content");
         assert_eq!(contents[1], "Second choice content");
@@ -129,7 +110,7 @@ mod tests {
     fn test_response_utils_get_finish_reason() {
         let response = create_test_chat_response();
         let reason = get_finish_reason(&response);
-        
+
         assert_eq!(reason, Some("stop"));
     }
 
@@ -137,7 +118,7 @@ mod tests {
     fn test_response_utils_was_truncated() {
         let response = create_test_chat_response();
         assert!(!was_truncated(&response));
-        
+
         let truncated_response = create_test_chat_response_truncated();
         assert!(was_truncated(&truncated_response));
     }
@@ -146,7 +127,7 @@ mod tests {
     fn test_response_utils_get_usage() {
         let response = create_test_chat_response();
         let usage = get_usage(&response);
-        
+
         assert!(usage.is_some());
         let usage = usage.unwrap();
         assert_eq!(usage.prompt_tokens, 10);
@@ -159,15 +140,15 @@ mod tests {
         let system_msg = ChatMessage::system("System prompt");
         assert_eq!(system_msg.role, "system");
         assert_eq!(system_msg.content[0].text, "System prompt");
-        
+
         let user_msg = ChatMessage::user("User input");
         assert_eq!(user_msg.role, "user");
         assert_eq!(user_msg.content[0].text, "User input");
-        
+
         let assistant_msg = ChatMessage::assistant("Assistant response");
         assert_eq!(assistant_msg.role, "assistant");
         assert_eq!(assistant_msg.content[0].text, "Assistant response");
-        
+
         let tool_msg = ChatMessage::tool("Tool output");
         assert_eq!(tool_msg.role, "tool");
         assert_eq!(tool_msg.content[0].text, "Tool output");
@@ -178,7 +159,7 @@ mod tests {
         let text_content = ContentObject::text("Hello world");
         assert_eq!(text_content.content_type, "text");
         assert_eq!(text_content.text, "Hello world");
-        
+
         let custom_content = ContentObject::new("custom", "Custom content");
         assert_eq!(custom_content.content_type, "custom");
         assert_eq!(custom_content.text, "Custom content");
@@ -193,7 +174,7 @@ mod tests {
             .temperature(0.5)
             .max_tokens(100)
             .build();
-        
+
         assert_eq!(request.model, "test-model");
         assert_eq!(request.messages.len(), 2);
         assert_eq!(request.temperature, Some(0.5));
@@ -203,18 +184,24 @@ mod tests {
     #[test]
     fn test_chat_response_methods() {
         let response = create_test_chat_response();
-        
+
         assert!(response.first_choice().is_some());
-        assert_eq!(response.first_content(), Some("Test response content".to_string()));
+        assert_eq!(
+            response.first_content(),
+            Some("Test response content".to_string())
+        );
         assert!(!response.has_tool_calls());
     }
 
     #[test]
     fn test_chat_choice_methods() {
         let choice = create_test_chat_choice();
-        
+
         assert!(!choice.finished_with_tool_calls());
-        assert_eq!(choice.content_string(), Some("Test response content".to_string()));
+        assert_eq!(
+            choice.content_string(),
+            Some("Test response content".to_string())
+        );
     }
 
     #[test]
@@ -222,10 +209,10 @@ mod tests {
         let text_content = ChatResponseContent::Text("Hello".to_string());
         assert_eq!(text_content.to_string(), "Hello");
         assert!(!text_content.is_empty());
-        
+
         let empty_content = ChatResponseContent::Text("".to_string());
         assert!(empty_content.is_empty());
-        
+
         let array_content = ChatResponseContent::Array(vec![
             crate::endpoints::chat::ChatContentObject {
                 content_type: "text".to_string(),
@@ -259,16 +246,14 @@ mod tests {
 
     fn create_test_chat_response_with_tools() -> ChatResponse {
         let mut response = create_test_chat_response();
-        response.choices[0].message.tool_calls = Some(vec![
-            crate::endpoints::chat::ChatToolCall {
-                id: "tool-1".to_string(),
-                function: crate::endpoints::chat::ChatFunctionCall {
-                    name: "test_function".to_string(),
-                    arguments: "{}".to_string(),
-                },
-                tool_type: "function".to_string(),
-            }
-        ]);
+        response.choices[0].message.tool_calls = Some(vec![crate::endpoints::chat::ChatToolCall {
+            id: "tool-1".to_string(),
+            function: crate::endpoints::chat::ChatFunctionCall {
+                name: "test_function".to_string(),
+                arguments: "{}".to_string(),
+            },
+            tool_type: "function".to_string(),
+        }]);
         response
     }
 
@@ -278,7 +263,9 @@ mod tests {
                 ChatChoice {
                     message: ChatResponseMessage {
                         role: "assistant".to_string(),
-                        content: Some(ChatResponseContent::Text("First choice content".to_string())),
+                        content: Some(ChatResponseContent::Text(
+                            "First choice content".to_string(),
+                        )),
                         tool_calls: None,
                     },
                     finish_reason: "stop".to_string(),
@@ -287,7 +274,9 @@ mod tests {
                 ChatChoice {
                     message: ChatResponseMessage {
                         role: "assistant".to_string(),
-                        content: Some(ChatResponseContent::Text("Second choice content".to_string())),
+                        content: Some(ChatResponseContent::Text(
+                            "Second choice content".to_string(),
+                        )),
                         tool_calls: None,
                     },
                     finish_reason: "stop".to_string(),
@@ -314,7 +303,9 @@ mod tests {
         ChatChoice {
             message: ChatResponseMessage {
                 role: "assistant".to_string(),
-                content: Some(ChatResponseContent::Text("Test response content".to_string())),
+                content: Some(ChatResponseContent::Text(
+                    "Test response content".to_string(),
+                )),
                 tool_calls: None,
             },
             finish_reason: "stop".to_string(),

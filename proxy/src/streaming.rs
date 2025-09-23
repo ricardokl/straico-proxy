@@ -1,11 +1,11 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(not(test))]
+use straico_client::endpoints::completion::completion_response::Usage;
 use straico_client::endpoints::completion::completion_response::{
     Choice, Completion, Message, ToolCall,
 };
-#[cfg(not(test))]
-use straico_client::endpoints::completion::completion_response::Usage;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct CompletionStream {

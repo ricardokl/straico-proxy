@@ -48,18 +48,6 @@ pub struct Cli {
     #[arg(long)]
     pub print_response_converted: bool,
 
-    /// Use the new chat endpoint by default
-    #[arg(long)]
-    pub use_new_chat_endpoint: bool,
-
-    /// Force tool calls to use new endpoint (even if legacy is default)
-    #[arg(long)]
-    pub force_new_endpoint_for_tools: bool,
-
-    /// Enable request validation
-    #[arg(long)]
-    pub validate_requests: bool,
-
     /// Include debug information in responses
     #[arg(long)]
     pub include_debug_info: bool,
@@ -79,14 +67,6 @@ pub struct Cli {
     /// Disable feature flag
     #[arg(long, action = clap::ArgAction::Append)]
     pub disable_feature: Vec<String>,
-
-    /// Maximum messages per request
-    #[arg(long)]
-    pub max_messages: Option<usize>,
-
-    /// Maximum content length per message
-    #[arg(long)]
-    pub max_content_length: Option<usize>,
 
     /// Request timeout in seconds
     #[arg(long)]

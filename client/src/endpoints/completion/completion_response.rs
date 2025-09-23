@@ -347,7 +347,9 @@ impl CompletionData {
         let completion = self.get_completion_data();
         let choice = completion.choices.into_iter().next().unwrap();
         let content = match choice.message {
-            Message::Assistant { content, .. } => content.map(|c| c.to_string()).unwrap_or_default(),
+            Message::Assistant { content, .. } => {
+                content.map(|c| c.to_string()).unwrap_or_default()
+            }
             _ => "".to_string(),
         };
         serde_json::from_str(&content).map_err(|e| StraicoError::ResponseParse(e.to_string()))

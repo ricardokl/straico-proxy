@@ -1,11 +1,10 @@
-use serde::{Deserialize, Serialize};
-use std::path::Path;
-use std::fs;
 use crate::config::ProxyConfig;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 /// Configuration file format for persistent settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConfigFile {
     /// Proxy server configuration
     pub proxy: ProxyConfig,
@@ -61,7 +60,7 @@ impl Default for FeatureFlags {
     fn default() -> Self {
         Self {
             enable_new_chat_endpoint: true,
-            enable_streaming: false, // Phase 3
+            enable_streaming: false,  // Phase 3
             enable_tool_calls: false, // Phase 2
             enable_caching: false,
             enable_metrics: false,
@@ -87,7 +86,6 @@ impl Default for EnvironmentConfig {
     }
 }
 
-
 /// Configuration manager for loading and saving configuration files
 pub struct ConfigManager {
     config_path: String,
@@ -105,7 +103,7 @@ impl ConfigManager {
     pub fn new<P: AsRef<Path>>(config_path: P) -> Self {
         let config_path = config_path.as_ref().to_string_lossy().to_string();
         let config = Self::load_config(&config_path).unwrap_or_default();
-        
+
         Self {
             config_path,
             config,
@@ -224,25 +222,16 @@ impl ConfigManager {
             errors.push("Request timeout cannot be 0".to_string());
         }
 
-        if !["development", "staging", "production"].contains(&self.config.environment.environment.as_str()) {
+        if !["development", "staging", "production"]
+            .contains(&self.config.environment.environment.as_str())
+        {
             errors.push("Environment must be one of: development, staging, production".to_string());
         }
 
-        if !["trace", "debug", "info", "warn", "error"].contains(&self.config.environment.log_level.as_str()) {
+        if !["trace", "debug", "info", "warn", "error"]
+            .contains(&self.config.environment.log_level.as_str())
+        {
             errors.push("Log level must be one of: trace, debug, info, warn, error".to_string());
-        }
-
-        // Validate proxy config
-        if let Some(max_messages) = self.config.proxy.max_messages_per_request {
-            if max_messages == 0 {
-                errors.push("Max messages per request cannot be 0".to_string());
-            }
-        }
-
-        if let Some(max_content) = self.config.proxy.max_content_length {
-            if max_content == 0 {
-                errors.push("Max content length cannot be 0".to_string());
-            }
         }
 
         if errors.is_empty() {
@@ -253,10 +242,12 @@ impl ConfigManager {
     }
 
     /// Creates a default configuration file at the specified path
-    pub fn create_default_config<P: AsRef<Path>>(path: P) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn create_default_config<P: AsRef<Path>>(
+        path: P,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let config = ConfigFile::default();
         let path_str = path.as_ref().to_string_lossy();
-        
+
         let content = if path_str.ends_with(".json") {
             serde_json::to_string_pretty(&config)?
         } else if path_str.ends_with(".yaml") || path_str.ends_with(".yml") {
@@ -273,13 +264,7 @@ impl ConfigManager {
     /// Merges CLI arguments with configuration file settings
     pub fn merge_with_cli_args(&mut self, cli_args: &crate::cli::Cli) {
         // Update proxy config from CLI
-        self.config.proxy.use_new_chat_endpoint = cli_args.use_new_chat_endpoint;
-        self.config.proxy.force_new_endpoint_for_tools = cli_args.force_new_endpoint_for_tools;
-        self.config.proxy.validate_requests = cli_args.validate_requests;
         self.config.proxy.include_debug_info = cli_args.include_debug_info;
-
-        // Update feature flags from CLI
-        self.config.features.enable_new_chat_endpoint = cli_args.use_new_chat_endpoint;
 
         // Update environment config from CLI if provided
         self.config.environment.port = cli_args.port;
@@ -323,16 +308,32 @@ impl EffectiveConfig {
     /// Gets all enabled features
     pub fn get_enabled_features(&self) -> Vec<String> {
         let mut enabled = Vec::new();
-        
-        if self.features.enable_new_chat_endpoint { enabled.push("new_chat_endpoint".to_string()); }
-        if self.features.enable_streaming { enabled.push("streaming".to_string()); }
-        if self.features.enable_tool_calls { enabled.push("tool_calls".to_string()); }
-        if self.features.enable_caching { enabled.push("caching".to_string()); }
-        if self.features.enable_metrics { enabled.push("metrics".to_string()); }
-        if self.features.enable_rate_limiting { enabled.push("rate_limiting".to_string()); }
-        if self.features.enable_request_logging { enabled.push("request_logging".to_string()); }
-        if self.features.enable_compression { enabled.push("compression".to_string()); }
-        
+
+        if self.features.enable_new_chat_endpoint {
+            enabled.push("new_chat_endpoint".to_string());
+        }
+        if self.features.enable_streaming {
+            enabled.push("streaming".to_string());
+        }
+        if self.features.enable_tool_calls {
+            enabled.push("tool_calls".to_string());
+        }
+        if self.features.enable_caching {
+            enabled.push("caching".to_string());
+        }
+        if self.features.enable_metrics {
+            enabled.push("metrics".to_string());
+        }
+        if self.features.enable_rate_limiting {
+            enabled.push("rate_limiting".to_string());
+        }
+        if self.features.enable_request_logging {
+            enabled.push("request_logging".to_string());
+        }
+        if self.features.enable_compression {
+            enabled.push("compression".to_string());
+        }
+
         enabled
     }
 }

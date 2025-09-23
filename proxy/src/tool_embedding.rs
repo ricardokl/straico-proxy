@@ -1,10 +1,10 @@
-use crate::openai_types::{OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiContentObject};
+use crate::openai_types::{OpenAiChatMessage, OpenAiChatRequest, OpenAiContent};
+use serde_json::from_value;
 use straico_client::chat::{
-    Tool, ANTHROPIC_PROMPT_FORMAT, COMMAND_R_PROMPT_FORMAT, DEEPSEEK_PROMPT_FORMAT,
-    LLAMA3_PROMPT_FORMAT, MISTRAL_PROMPT_FORMAT, PromptFormat, QWEN_PROMPT_FORMAT,
+    PromptFormat, Tool, ANTHROPIC_PROMPT_FORMAT, COMMAND_R_PROMPT_FORMAT, DEEPSEEK_PROMPT_FORMAT,
+    LLAMA3_PROMPT_FORMAT, MISTRAL_PROMPT_FORMAT, QWEN_PROMPT_FORMAT,
 };
 use straico_client::endpoints::chat::ChatRequest;
-use serde_json::from_value;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -84,7 +84,7 @@ fn extract_system_message_content(messages: &mut Vec<OpenAiChatMessage>) -> Opti
 pub fn generate_tool_xml(tools: &[Tool], model: &str) -> String {
     // Determine format based on model
     let format = get_prompt_format_for_model(model);
-    
+
     let pre_tools = r###"
 # Tools
 
@@ -111,7 +111,7 @@ You are provided with available function signatures within <tools></tools> XML t
         tools_message.push_str(&serde_json::to_string_pretty(tool).unwrap());
     }
     tools_message.push_str(&post_tools);
-    
+
     tools_message
 }
 
@@ -137,8 +137,7 @@ fn get_prompt_format_for_model(model: &str) -> PromptFormat<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openai_types::{OpenAiChatMessage, OpenAiContent, OpenAiContentObject};
-    use straico_client::chat::Tool;
+    use crate::openai_types::{OpenAiChatMessage, OpenAiContent};
 
     #[test]
     fn test_embed_tools_in_chat_request() {
