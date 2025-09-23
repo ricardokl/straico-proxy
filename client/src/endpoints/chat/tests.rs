@@ -252,6 +252,8 @@ mod tests {
             id: Some("test-id".to_string()),
             object: Some("chat.completion".to_string()),
             created: Some(1234567890),
+            tools: None,
+            tool_choice: None,
         }
     }
 
@@ -297,6 +299,8 @@ mod tests {
             id: None,
             object: None,
             created: None,
+            tools: None,
+            tool_choice: None,
         }
     }
 

@@ -124,11 +124,11 @@ pub struct Completion {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Usage {
     /// Number of tokens in the input/prompt text
-    prompt_tokens: u32,
+    pub prompt_tokens: u32,
     /// Number of tokens in the generated completion/output
-    completion_tokens: u32,
+    pub completion_tokens: u32,
     /// Total combined token count (prompt + completion)
-    total_tokens: u32,
+    pub total_tokens: u32,
 }
 
 /// Represents a single generated choice/response from a language model completion.
@@ -170,6 +170,33 @@ pub enum Message {
     System { content: Content },
     /// A message from a tool containing output or results
     Tool { content: Content },
+}
+
+impl Message {
+    pub fn new_user(content: impl Into<String>) -> Self {
+        Message::User {
+            content: Content::Text(content.into().into()),
+        }
+    }
+
+    pub fn new_assistant(content: Option<String>, tool_calls: Option<Vec<ToolCall>>) -> Self {
+        Message::Assistant {
+            content: content.map(|c| Content::Text(c.into())),
+            tool_calls,
+        }
+    }
+
+    pub fn new_system(content: impl Into<String>) -> Self {
+        Message::System {
+            content: Content::Text(content.into().into()),
+        }
+    }
+
+    pub fn new_tool(content: impl Into<String>) -> Self {
+        Message::Tool {
+            content: Content::Text(content.into().into()),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -284,9 +311,9 @@ pub enum ToolCall {
 #[derive(Deserialize, Clone, Debug)]
 pub struct FunctionData {
     /// The name of the function to call
-    name: String,
+    pub name: String,
     /// The arguments to pass to the function as a JSON Value
-    arguments: Value,
+    pub arguments: Value,
 }
 
 // Custom serializer to convert Value to String
@@ -314,6 +341,16 @@ impl CompletionData {
     pub fn get_completion_data(self) -> Completion {
         let values = self.completions.into_values();
         values.map(|x| x.completion).next().unwrap()
+    }
+
+    pub fn get_chat_completion(self) -> Result<super::super::chat::ChatResponse, StraicoError> {
+        let completion = self.get_completion_data();
+        let choice = completion.choices.into_iter().next().unwrap();
+        let content = match choice.message {
+            Message::Assistant { content, .. } => content.map(|c| c.to_string()).unwrap_or_default(),
+            _ => "".to_string(),
+        };
+        serde_json::from_str(&content).map_err(|e| StraicoError::ResponseParse(e.to_string()))
     }
 }
 

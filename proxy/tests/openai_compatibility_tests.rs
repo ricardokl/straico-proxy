@@ -3,6 +3,7 @@ use serde_json::{json, Value};
 use straico_proxy::{
     config::ProxyConfig,
     server,
+    openai_types::{OpenAiChatRequest, OpenAiContent},
     AppState,
 };
 use straico_client::client::StraicoClient;
@@ -12,13 +13,13 @@ fn create_test_app_state() -> AppState {
     AppState {
         client: StraicoClient::new(),
         key: "test-api-key".to_string(),
-        config: ProxyConfig::new()
-            .with_validation(true)
-            .with_debug_info(true),
+        config: ProxyConfig::default(),
         print_request_raw: false,
         print_request_converted: false,
         print_response_raw: false,
         print_response_converted: false,
+        use_new_chat_endpoint: true,
+        force_new_endpoint_for_tools: true,
     }
 }
 
@@ -55,7 +56,6 @@ async fn test_openai_request_format_compatibility() {
 
     let resp = test::call_service(&app, req).await;
     
-    // Should accept the request format (may fail due to API key but format is valid)
     assert!(resp.status().is_server_error() || resp.status().is_success());
     assert_ne!(resp.status(), actix_web::http::StatusCode::BAD_REQUEST);
 }
@@ -68,7 +68,6 @@ async fn test_openai_array_content_format() {
             .service(server::openai_chat_completion)
     ).await;
 
-    // Test OpenAI array content format
     let array_content_request = json!({
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -92,7 +91,6 @@ async fn test_openai_array_content_format() {
 
     let resp = test::call_service(&app, req).await;
     
-    // Should accept array content format
     assert!(resp.status().is_server_error() || resp.status().is_success());
     assert_ne!(resp.status(), actix_web::http::StatusCode::BAD_REQUEST);
 }
@@ -105,7 +103,6 @@ async fn test_openai_parameter_compatibility() {
             .service(server::openai_chat_completion)
     ).await;
 
-    // Test all OpenAI parameters
     let full_params_request = json!({
         "model": "gpt-4",
         "messages": [
@@ -129,7 +126,6 @@ async fn test_openai_parameter_compatibility() {
 
     let resp = test::call_service(&app, req).await;
     
-    // Should handle all parameters gracefully
     assert!(resp.status().is_server_error() || resp.status().is_success());
 }
 
@@ -141,7 +137,6 @@ async fn test_openai_error_format_compatibility() {
             .service(server::openai_chat_completion)
     ).await;
 
-    // Test invalid request that should return OpenAI-compatible error
     let invalid_request = json!({
         "model": "",
         "messages": []
@@ -154,9 +149,6 @@ async fn test_openai_error_format_compatibility() {
 
     let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_client_error());
-
-    // TODO: Verify error response format matches OpenAI spec
-    // This would require parsing the response body and checking structure
 }
 
 #[actix_web::test]
@@ -167,7 +159,6 @@ async fn test_openai_conversation_format() {
             .service(server::openai_chat_completion)
     ).await;
 
-    // Test multi-turn conversation format
     let conversation_request = json!({
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -199,7 +190,6 @@ async fn test_openai_conversation_format() {
 
     let resp = test::call_service(&app, req).await;
     
-    // Should handle conversation format
     assert!(resp.status().is_server_error() || resp.status().is_success());
 }
 
@@ -211,7 +201,6 @@ async fn test_openai_edge_cases() {
             .service(server::openai_chat_completion)
     ).await;
 
-    // Test edge case: very long content
     let long_content = "a".repeat(5000);
     let long_content_request = json!({
         "model": "gpt-3.5-turbo",
@@ -227,10 +216,8 @@ async fn test_openai_edge_cases() {
 
     let resp = test::call_service(&app, req).await;
     
-    // Should handle or reject appropriately based on configuration
     assert!(resp.status().is_server_error() || resp.status().is_client_error() || resp.status().is_success());
 
-    // Test edge case: unicode and emoji content
     let unicode_request = json!({
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -245,7 +232,6 @@ async fn test_openai_edge_cases() {
 
     let resp = test::call_service(&app, req).await;
     
-    // Should handle unicode content
     assert!(resp.status().is_server_error() || resp.status().is_success());
 }
 
@@ -257,7 +243,6 @@ async fn test_openai_mixed_content_types() {
             .service(server::openai_chat_completion)
     ).await;
 
-    // Test mixed content types in conversation
     let mixed_request = json!({
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -285,15 +270,13 @@ async fn test_openai_mixed_content_types() {
 
     let resp = test::call_service(&app, req).await;
     
-    // Should handle mixed content formats in same conversation
     assert!(resp.status().is_server_error() || resp.status().is_success());
 }
 
-#[test]
-fn test_openai_request_structure_validation() {
-    use straico_proxy::openai_types::*;
+#[actix_web::test]
+async fn test_openai_request_structure_validation() {
+    let config = ProxyConfig::default();
 
-    // Test valid OpenAI request structure
     let valid_json = json!({
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -312,15 +295,11 @@ fn test_openai_request_structure_validation() {
     assert_eq!(request.temperature, Some(0.7));
     assert_eq!(request.max_tokens, Some(100));
 
-    // Test request validation
-    assert!(request.validate().is_ok());
+    assert!(config.validate_chat_request(&request).is_ok());
 }
 
-#[test]
-fn test_openai_content_format_parsing() {
-    use straico_proxy::openai_types::*;
-
-    // Test string content parsing
+#[actix_web::test]
+async fn test_openai_content_format_parsing() {
     let string_content_json = json!("Hello world");
     let string_content: OpenAiContent = serde_json::from_value(string_content_json).unwrap();
     
@@ -329,7 +308,6 @@ fn test_openai_content_format_parsing() {
         _ => panic!("Expected string content"),
     }
 
-    // Test array content parsing
     let array_content_json = json!([
         {"type": "text", "text": "Hello"},
         {"type": "text", "text": " world"}
@@ -346,11 +324,8 @@ fn test_openai_content_format_parsing() {
     }
 }
 
-#[test]
-fn test_openai_parameter_defaults() {
-    use straico_proxy::openai_types::*;
-
-    // Test minimal request
+#[actix_web::test]
+async fn test_openai_parameter_defaults() {
     let minimal_json = json!({
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -360,18 +335,16 @@ fn test_openai_parameter_defaults() {
 
     let request: OpenAiChatRequest = serde_json::from_value(minimal_json).unwrap();
     
-    // Verify defaults
     assert_eq!(request.temperature, None);
     assert_eq!(request.max_tokens, None);
     assert_eq!(request.stream, false);
-    assert_eq!(request.tools, None);
+    assert!(request.tools.is_none());
 }
 
-#[test]
-fn test_openai_error_cases() {
-    use straico_proxy::openai_types::*;
+#[actix_web::test]
+async fn test_openai_error_cases() {
+    let config = ProxyConfig::default();
 
-    // Test invalid model
     let invalid_model_json = json!({
         "model": "",
         "messages": [
@@ -380,18 +353,16 @@ fn test_openai_error_cases() {
     });
 
     let request: OpenAiChatRequest = serde_json::from_value(invalid_model_json).unwrap();
-    assert!(request.validate().is_err());
+    assert!(config.validate_chat_request(&request).is_err());
 
-    // Test empty messages
     let empty_messages_json = json!({
         "model": "gpt-3.5-turbo",
         "messages": []
     });
 
     let request: OpenAiChatRequest = serde_json::from_value(empty_messages_json).unwrap();
-    assert!(request.validate().is_err());
+    assert!(config.validate_chat_request(&request).is_err());
 
-    // Test invalid temperature
     let invalid_temp_json = json!({
         "model": "gpt-3.5-turbo",
         "messages": [
@@ -401,5 +372,5 @@ fn test_openai_error_cases() {
     });
 
     let request: OpenAiChatRequest = serde_json::from_value(invalid_temp_json).unwrap();
-    assert!(request.validate().is_err());
+    assert!(config.validate_chat_request(&request).is_err());
 }

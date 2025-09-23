@@ -33,21 +33,6 @@ pub fn convert_openai_message_to_straico(message: OpenAiChatMessage) -> ChatMess
     message.to_straico_message()
 }
 
-/// Converts complete OpenAI chat request to Straico ChatRequest format.
-///
-/// This is the main conversion function that handles the complete request transformation.
-///
-/// # Arguments
-/// * `openai_request` - The OpenAI chat request to convert
-///
-/// # Returns
-/// Result containing ChatRequest in Straico format or error message
-pub fn convert_openai_request_to_straico(
-    openai_request: OpenAiChatRequest,
-) -> Result<ChatRequest, String> {
-    openai_request.to_straico_request()
-}
-
 /// Validates that content objects are well-formed and supported.
 ///
 /// # Arguments

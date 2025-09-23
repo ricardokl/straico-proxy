@@ -89,6 +89,7 @@ version = "2.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24eda4e2a6e042aa4e55ac438a2ae052d3b5da0ecf83d7411e1a368946925208"
 dependencies = [
+ "actix-macros",
  "futures-core",
  "tokio",
 ]
@@ -571,6 +572,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "either"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "encoding_rs"
@@ -1899,10 +1906,13 @@ dependencies = [
 name = "straico-proxy"
 version = "0.1.0"
 dependencies = [
+ "actix-http",
+ "actix-rt",
  "actix-web",
  "anyhow",
  "clap",
  "derive",
+ "either",
  "flexi_logger",
  "futures",
  "log",
@@ -1912,6 +1922,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "straico-client",
+ "straico-proxy",
  "thiserror",
  "tokio",
  "tokio-stream",

@@ -4,124 +4,14 @@ use clap::Parser;
 use flexi_logger::{FileSpec, Logger, WriteMode};
 use log::{info, warn};
 use straico_client::client::StraicoClient;
-use config::ProxyConfig;
-use config_manager::ConfigManager;
-mod config;
-mod config_manager;
-mod content_conversion;
-mod error;
-mod openai_types;
-mod response_utils;
-mod server;
-mod streaming;
-mod tool_embedding;
+use straico_proxy::{
+    cli::Cli,
+    config::ProxyConfig,
+    config_manager::ConfigManager,
+    server,
+};
 
-#[derive(Parser)]
-#[command(
-    name = "straico-proxy",
-    about = "A proxy server for Straico API that provides OpenAI-compatible endpoints",
-    version
-)]
-pub struct Cli {
-    /// Host address to bind to
-    #[arg(long, default_value = "127.0.0.1")]
-    pub host: String,
 
-    /// Port to listen on
-    #[arg(long, default_value = "8000")]
-    pub port: u16,
-
-    /// API key for Straico (alternatively use STRAICO_API_KEY env var)
-    #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
-    pub api_key: Option<String>,
-
-    /// Configuration file path
-    #[arg(long, default_value = "config.toml")]
-    pub config: String,
-
-    /// Create a default configuration file and exit
-    #[arg(long)]
-    pub create_config: bool,
-
-    /// Log to file (proxy.log)
-    #[arg(long)]
-    pub log_to_file: bool,
-
-    /// Log to standard output
-    #[arg(long)]
-    pub log_to_stdout: bool,
-
-    /// Print the raw request
-    #[arg(long)]
-    pub print_request_raw: bool,
-    /// Print the request after converting to Straico format
-    #[arg(long)]
-    pub print_request_converted: bool,
-    /// Print the raw response from Straico
-    #[arg(long)]
-    pub print_response_raw: bool,
-    /// Print the response after converting to OpenAI format
-    #[arg(long)]
-    pub print_response_converted: bool,
-
-    /// Use the new chat endpoint by default
-    #[arg(long)]
-    pub use_new_chat_endpoint: bool,
-
-    /// Enable request validation
-    #[arg(long)]
-    pub validate_requests: bool,
-
-    /// Include debug information in responses
-    #[arg(long)]
-    pub include_debug_info: bool,
-
-    /// Set log level (trace, debug, info, warn, error)
-    #[arg(long)]
-    pub log_level: Option<String>,
-
-    /// Environment (development, staging, production)
-    #[arg(long)]
-    pub environment: Option<String>,
-
-    /// Enable feature flag
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub enable_feature: Vec<String>,
-
-    /// Disable feature flag
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub disable_feature: Vec<String>,
-
-    /// Maximum messages per request
-    #[arg(long)]
-    pub max_messages: Option<usize>,
-
-    /// Maximum content length per message
-    #[arg(long)]
-    pub max_content_length: Option<usize>,
-
-    /// Request timeout in seconds
-    #[arg(long)]
-    pub timeout: Option<u64>,
-}
-
-/// Represents the application state shared across HTTP request handlers.
-///
-/// This struct contains all the necessary components for handling requests,
-/// including the Straico API client, authentication key, and debug settings.
-#[derive(Clone)]
-struct AppState {
-    /// The Straico API client used for making requests
-    client: StraicoClient,
-    /// API authentication key for Straico
-    key: String,
-    /// Proxy configuration settings
-    config: ProxyConfig,
-    print_request_raw: bool,
-    print_request_converted: bool,
-    print_response_raw: bool,
-    print_response_converted: bool,
-}
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
@@ -244,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppState {
+            .app_data(web::Data::new(server::AppState {
                 client: StraicoClient::new(),
                 key: api_key.clone(),
                 config: proxy_config.clone(),
@@ -252,6 +142,8 @@ async fn main() -> anyhow::Result<()> {
                 print_request_converted: cli.print_request_converted,
                 print_response_raw: cli.print_response_raw,
                 print_response_converted: cli.print_response_converted,
+                use_new_chat_endpoint: effective_config.proxy.use_new_chat_endpoint,
+                force_new_endpoint_for_tools: effective_config.proxy.force_new_endpoint_for_tools,
             }))
             .service(server::openai_chat_completion)
             .default_service(web::to(HttpResponse::NotFound))

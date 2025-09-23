@@ -271,9 +271,10 @@ impl ConfigManager {
     }
 
     /// Merges CLI arguments with configuration file settings
-    pub fn merge_with_cli_args(&mut self, cli_args: &crate::Cli) {
+    pub fn merge_with_cli_args(&mut self, cli_args: &crate::cli::Cli) {
         // Update proxy config from CLI
         self.config.proxy.use_new_chat_endpoint = cli_args.use_new_chat_endpoint;
+        self.config.proxy.force_new_endpoint_for_tools = cli_args.force_new_endpoint_for_tools;
         self.config.proxy.validate_requests = cli_args.validate_requests;
         self.config.proxy.include_debug_info = cli_args.include_debug_info;
 
