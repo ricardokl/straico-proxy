@@ -72,6 +72,9 @@ pub struct OpenAiChatRequest {
     /// Optional tools/functions available to the model
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<serde_json::Value>, // Will be handled in Phase 2
+    /// Optional tool choice
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<String>,
 }
 
 impl OpenAiContent {

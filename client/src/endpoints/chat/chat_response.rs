@@ -30,6 +30,12 @@ pub struct ChatResponse {
     /// Unix timestamp of when this completion was created
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<u64>,
+    /// The tool choice that was used for the completion
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<String>,
+    /// The tools that were available for the completion
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<serde_json::Value>,
 }
 
 /// Represents a single choice/response from the chat completion.
