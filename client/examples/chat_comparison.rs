@@ -1,7 +1,6 @@
 use straico_client::{
-    chat::{Message,},
-    endpoints::chat::{ChatClientExt, ChatMessage, ChatRequest, ChatResponseExt},
     StraicoClient,
+    endpoints::chat::{ChatMessage, ChatRequest},
 };
 
 #[tokio::main]
@@ -13,7 +12,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let user_question = "What are the main advantages of Rust programming language?";
 
     println!("=== Chat Endpoint Example ===\n");
-    println!("Question: {}\n", user_question);
+    println!("Question: {user_question}\n");
 
     let chat_request = ChatRequest::builder()
         .model("gpt-3.5-turbo")
@@ -33,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chat_data = chat_response.get_chat_response()?;
 
     if let Some(content) = chat_data.first_content() {
-        println!("Response: {}", content);
+        println!("Response: {content}");
     }
 
     if let Some(usage) = &chat_data.usage {

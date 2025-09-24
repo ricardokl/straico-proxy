@@ -44,10 +44,10 @@ pub fn validate_content_objects(content: &[ContentObject]) -> Result<(), String>
 
     for (i, obj) in content.iter().enumerate() {
         if obj.content_type.trim().is_empty() {
-            return Err(format!("Content object {} has empty type", i));
+            return Err(format!("Content object {i} has empty type"));
         }
         if obj.text.trim().is_empty() {
-            return Err(format!("Content object {} has empty text", i));
+            return Err(format!("Content object {i} has empty text"));
         }
         // Currently only support "text" type
         if obj.content_type != "text" {

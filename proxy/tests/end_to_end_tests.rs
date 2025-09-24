@@ -32,11 +32,11 @@ async fn create_test_app(
 
 #[actix_web::test]
 async fn test_chat_completions_endpoint_routing() {
-    let mut app = create_test_app().await;
+    let app = create_test_app().await;
 
     let req = test::TestRequest::post()
         .uri("/v1/chat/completions")
-        .set_json(&json!({
+        .set_json(json!({
             "model": "gpt-3.5-turbo",
             "messages": [
                 {"role": "user", "content": "Hello"}
@@ -44,7 +44,7 @@ async fn test_chat_completions_endpoint_routing() {
         }))
         .to_request();
 
-    let resp = test::call_service(&mut app, req).await;
+    let resp = test::call_service(&app, req).await;
 
     assert!(resp.status().is_server_error() || resp.status().is_client_error());
     assert_ne!(resp.status(), StatusCode::NOT_FOUND);
@@ -52,29 +52,29 @@ async fn test_chat_completions_endpoint_routing() {
 
 #[actix_web::test]
 async fn test_legacy_completion_endpoint_routing() {
-    let mut app = create_test_app().await;
+    let app = create_test_app().await;
 
     let req = test::TestRequest::post()
         .uri("/v1/completions")
-        .set_json(&json!({
+        .set_json(json!({
             "model": "text-davinci-003",
             "prompt": "Hello",
             "max_tokens": 5
         }))
         .to_request();
 
-    let resp = test::call_service(&mut app, req).await;
+    let resp = test::call_service(&app, req).await;
 
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[actix_web::test]
 async fn test_content_format_validation() {
-    let mut app = create_test_app().await;
+    let app = create_test_app().await;
 
     let string_content_req = test::TestRequest::post()
         .uri("/v1/chat/completions")
-        .set_json(&json!({
+        .set_json(json!({
             "model": "gpt-3.5-turbo",
             "messages": [
                 {"role": "user", "content": "Hello world"}
@@ -82,12 +82,12 @@ async fn test_content_format_validation() {
         }))
         .to_request();
 
-    let resp = test::call_service(&mut app, string_content_req).await;
+    let resp = test::call_service(&app, string_content_req).await;
     assert!(resp.status().is_server_error() || resp.status().is_success());
 
     let array_content_req = test::TestRequest::post()
         .uri("/v1/chat/completions")
-        .set_json(&json!({
+        .set_json(json!({
             "model": "gpt-3.5-turbo",
             "messages": [
                 {
@@ -100,17 +100,17 @@ async fn test_content_format_validation() {
         }))
         .to_request();
 
-    let resp = test::call_service(&mut app, array_content_req).await;
+    let resp = test::call_service(&app, array_content_req).await;
     assert!(resp.status().is_server_error() || resp.status().is_success());
 }
 
 #[actix_web::test]
 async fn test_openai_compatibility() {
-    let mut app = create_test_app().await;
+    let app = create_test_app().await;
 
     let openai_req = test::TestRequest::post()
         .uri("/v1/chat/completions")
-        .set_json(&json!({
+        .set_json(json!({
             "model": "gpt-3.5-turbo",
             "messages": [
                 {"role": "system", "content": "You are a helpful assistant."},
@@ -124,7 +124,7 @@ async fn test_openai_compatibility() {
         }))
         .to_request();
 
-    let resp = test::call_service(&mut app, openai_req).await;
+    let resp = test::call_service(&app, openai_req).await;
 
     assert!(resp.status().is_server_error() || resp.status().is_success());
     assert_ne!(resp.status(), StatusCode::BAD_REQUEST);

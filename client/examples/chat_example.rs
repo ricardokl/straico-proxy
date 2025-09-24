@@ -1,7 +1,7 @@
 use straico_client::{
     StraicoClient,
     endpoints::chat::{
-        ChatClientExt, ChatMessage, ChatRequest, ChatResponseExt, ContentObject, builders::*,
+        ChatClientExt, ChatMessage, ChatRequest, ContentObject, builders::*,
         response_utils::*,
     },
 };
@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let chat_response = response.get_chat_response()?;
     if let Some(content) = get_first_content(&chat_response) {
-        println!("Response: {}\n", content);
+        println!("Response: {content}\n");
     }
 
     println!("2. System + User Message:");
@@ -48,7 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let chat_response = response.get_chat_response()?;
     if let Some(content) = get_first_content(&chat_response) {
-        println!("Response: {}\n", content);
+        println!("Response: {content}\n");
     }
 
     println!("3. Multi-turn Conversation:");
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let chat_response = response.get_chat_response()?;
     if let Some(content) = get_first_content(&chat_response) {
-        println!("Response: {}\n", content);
+        println!("Response: {content}\n");
     }
 
     println!("4. Advanced Request with Parameters:");
@@ -93,7 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let chat_response = response.get_chat_response()?;
     if let Some(content) = get_first_content(&chat_response) {
-        println!("Response: {}\n", content);
+        println!("Response: {content}\n");
     }
 
     println!("5. Direct Builder Pattern:");
@@ -160,7 +160,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let chat_response = response.get_chat_response()?;
     if let Some(content) = get_first_content(&chat_response) {
-        println!("Analysis: {}\n", content);
+        println!("Analysis: {content}\n");
     }
 
     println!("=== All examples completed successfully! ===");

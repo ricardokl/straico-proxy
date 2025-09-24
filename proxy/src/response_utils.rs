@@ -41,7 +41,7 @@ pub mod chat_response_utils {
     /// Converts a generic JSON response to a ChatResponse with error handling
     pub fn parse_chat_response(json_data: Value) -> Result<ChatResponse, String> {
         serde_json::from_value(json_data)
-            .map_err(|e| format!("Failed to parse chat response: {}", e))
+            .map_err(|e| format!("Failed to parse chat response: {e}"))
     }
 
     /// Generates a chat completion ID in OpenAI format
@@ -55,7 +55,7 @@ pub mod chat_response_utils {
             .map(char::from)
             .collect();
 
-        format!("chatcmpl-{}", random_part)
+        format!("chatcmpl-{random_part}")
     }
 
     /// Gets the current Unix timestamp
@@ -117,7 +117,7 @@ pub mod error_response_utils {
     /// Creates a conversion error response
     pub fn create_conversion_error(message: String) -> ErrorResponse {
         create_error_response(
-            format!("Content conversion failed: {}", message),
+            format!("Content conversion failed: {message}"),
             "invalid_request_error".to_string(),
             None,
             Some("conversion_failed".to_string()),
@@ -127,7 +127,7 @@ pub mod error_response_utils {
     /// Creates a server error response
     pub fn create_server_error(message: String) -> ErrorResponse {
         create_error_response(
-            format!("Internal server error: {}", message),
+            format!("Internal server error: {message}"),
             "server_error".to_string(),
             None,
             Some("internal_error".to_string()),

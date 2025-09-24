@@ -53,8 +53,8 @@ impl ResponseError for CustomError {
 
     fn error_response(&self) -> HttpResponse {
         let error_message = match self {
-            CustomError::ToolEmbedding(e) => format!("Tool processing failed: {}", e),
-            CustomError::RequestValidation(e) => format!("Invalid request: {}", e),
+            CustomError::ToolEmbedding(e) => format!("Tool processing failed: {e}"),
+            CustomError::RequestValidation(e) => format!("Invalid request: {e}"),
             _ => self.to_string(),
         };
 

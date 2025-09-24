@@ -1,6 +1,6 @@
 use crate::openai_types::{OpenAiChatMessage, OpenAiChatRequest, OpenAiContent};
 use serde_json::from_value;
-use straico_client::chat::{PromptFormat, Tool};
+use straico_client::chat::{Tool, ToolCallsFormat};
 use straico_client::endpoints::chat::ChatRequest;
 use thiserror::Error;
 
@@ -54,7 +54,7 @@ pub fn embed_tools_in_chat_request(
 
         let new_content = match &first_user_message.content {
             OpenAiContent::String(text) => {
-                OpenAiContent::String(format!("{}\n\n{}", preamble, text))
+                OpenAiContent::String(format!("{preamble}\n\n{text}"))
             }
             OpenAiContent::Array(objects) => {
                 let original_text = objects
@@ -63,7 +63,7 @@ pub fn embed_tools_in_chat_request(
                     .map(|obj| obj.text.as_str())
                     .collect::<Vec<_>>()
                     .join(" ");
-                OpenAiContent::String(format!("{}\n\n{}", preamble, original_text))
+                OpenAiContent::String(format!("{preamble}\n\n{original_text}"))
             }
         };
         first_user_message.content = new_content;
@@ -84,7 +84,7 @@ fn extract_system_message_content(messages: &mut Vec<OpenAiChatMessage>) -> Opti
 /// Generates tool XML for embedding in messages.
 pub fn generate_tool_xml(tools: &[Tool], _model: &str) -> String {
     // Determine format based on model
-    let format = PromptFormat::default();
+    let format = ToolCallsFormat::default();
 
     let pre_tools = r###"
 # Tools
@@ -97,13 +97,13 @@ You are provided with available function signatures within <tools></tools> XML t
 
     let post_tools = format!(
         "\n</tools>\n# Tool Calls\n\nStart with the opening tag {}. For each tool call, return a json object with function name and arguments within {}{} tags:\n{}{{\"name\": <function-name>{} \"arguments\": <args-json-object>}}{}. close the tool calls section with {}\n",
-        format.tool_calls.tool_calls_begin,
-        format.tool_calls.tool_call_begin,
-        format.tool_calls.tool_call_end,
-        format.tool_calls.tool_call_begin,
-        format.tool_calls.tool_sep,
-        format.tool_calls.tool_call_end,
-        format.tool_calls.tool_calls_end
+        format.tool_calls_begin,
+        format.tool_call_begin,
+        format.tool_call_end,
+        format.tool_call_begin,
+        format.tool_sep,
+        format.tool_call_end,
+        format.tool_calls_end
     );
 
     let mut tools_message = String::new();
@@ -114,6 +114,22 @@ You are provided with available function signatures within <tools></tools> XML t
     tools_message.push_str(&post_tools);
 
     tools_message
+}
+
+// Default implementation for OpenAiChatRequest for tests
+impl Default for OpenAiChatRequest {
+    fn default() -> Self {
+        OpenAiChatRequest {
+            model: "default-model".to_string(),
+            messages: vec![],
+            temperature: None,
+            max_tokens: None,
+            max_completion_tokens: None,
+            stream: false,
+            tools: None,
+            tool_choice: None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -159,21 +175,5 @@ mod tests {
         assert!(user_message_content.contains("<tools>"));
         assert!(user_message_content.contains("test_function"));
         assert!(user_message_content.contains("Hello"));
-    }
-}
-
-// Default implementation for OpenAiChatRequest for tests
-impl Default for OpenAiChatRequest {
-    fn default() -> Self {
-        OpenAiChatRequest {
-            model: "default-model".to_string(),
-            messages: vec![],
-            temperature: None,
-            max_tokens: None,
-            max_completion_tokens: None,
-            stream: false,
-            tools: None,
-            tool_choice: None,
-        }
     }
 }

@@ -189,7 +189,7 @@ impl ConfigManager {
             "rate_limiting" => self.config.features.enable_rate_limiting = enabled,
             "request_logging" => self.config.features.enable_request_logging = enabled,
             "compression" => self.config.features.enable_compression = enabled,
-            _ => return Err(format!("Unknown feature flag: {}", flag)),
+            _ => return Err(format!("Unknown feature flag: {flag}")),
         }
         Ok(())
     }
@@ -205,7 +205,7 @@ impl ConfigManager {
             "rate_limiting" => Ok(self.config.features.enable_rate_limiting),
             "request_logging" => Ok(self.config.features.enable_request_logging),
             "compression" => Ok(self.config.features.enable_compression),
-            _ => Err(format!("Unknown feature flag: {}", flag)),
+            _ => Err(format!("Unknown feature flag: {flag}")),
         }
     }
 
