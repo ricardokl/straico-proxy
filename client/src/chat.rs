@@ -65,44 +65,6 @@ pub enum Tool {
     },
 }
 
-/// Defines the format for structuring chat prompts for different language models.
-///
-/// The `PromptFormat` struct specifies how different parts of a chat conversation should be
-/// formatted when creating prompts for language models. It controls the wrapping text and
-/// markers around system messages, user messages, and assistant responses.
-///
-/// # Fields
-///
-/// * `begin` - Text to insert at the very start of the prompt
-/// * `system_pre` - Text to insert before system messages
-/// * `system_post` - Text to insert after system messages
-/// * `user_pre` - Text to insert before user messages
-/// * `user_post` - Text to insert after user messages
-/// * `assistant_pre` - Text to insert before assistant responses
-/// * `assistant_post` - Text to insert after assistant responses
-/// * `end` - Text to append at the very end of the prompt
-pub struct PromptFormat<'a> {
-    /// Text to insert at the very beginning of the prompt
-    begin: &'a str,
-    /// Text to insert before system messages
-    system_pre: &'a str,
-    /// Text to insert after system messages
-    system_post: &'a str,
-    /// Text to insert before user messages
-    user_pre: &'a str,
-    /// Text to insert after user messages
-    user_post: &'a str,
-    /// Text to insert before assistant responses
-    assistant_pre: &'a str,
-    /// Text to insert after assistant responses
-    assistant_post: &'a str,
-    /// Text to append at the very end of the prompt
-    #[allow(dead_code)]
-    end: &'a str,
-    pub tool_calls: ToolCallsFormat<'a>,
-    pub tool_output: ToolOutputFormat<'a>,
-}
-
 pub struct ToolCallsFormat<'a> {
     pub tool_calls_begin: &'a str,
     pub tool_call_begin: &'a str,
@@ -142,33 +104,3 @@ impl Default for ToolOutputFormat<'_> {
         }
     }
 }
-
-impl Default for PromptFormat<'_> {
-    /// Returns a default prompt format suitable for basic chat interactions.
-    ///
-    /// This implementation provides a simple instruction/response style format with:
-    /// - No special prefix/suffix for system messages
-    /// - "### Instruction:" prefix for user messages
-    /// - "### Response:" prefix for assistant messages and prompt ending
-    ///
-    /// # Returns
-    ///
-    /// A `PromptFormat` instance initialized with default formatting strings for
-    /// basic chat interactions.
-    fn default() -> Self {
-        PromptFormat {
-            begin: "",
-            system_pre: "<system>",
-            system_post: "</system>",
-            user_pre: "<user>",
-            user_post: "</user>",
-            assistant_pre: "<assistant>",
-            assistant_post: "</assistant>",
-            end: "<assistant>",
-            tool_calls: ToolCallsFormat::default(),
-            tool_output: ToolOutputFormat::default(),
-        }
-    }
-}
-
-

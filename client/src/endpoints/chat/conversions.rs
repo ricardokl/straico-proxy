@@ -1,7 +1,7 @@
 use super::{
+    ChatMessage, ChatRequest, ChatResponseContent, ContentObject,
     chat_request::ContentObject as RequestContentObject,
-    chat_response::ChatContentObject as ResponseContentObject, ChatMessage, ChatRequest,
-    ChatResponseContent, ContentObject,
+    chat_response::ChatContentObject as ResponseContentObject,
 };
 use crate::chat::{Chat, Message, Tool};
 
@@ -45,7 +45,6 @@ impl From<ChatResponseContent> for Vec<RequestContentObject> {
         }
     }
 }
-
 
 /// Builder for creating ChatRequest instances with OpenAI compatibility.
 pub struct OpenAiChatRequestBuilder {

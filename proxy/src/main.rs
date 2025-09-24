@@ -26,19 +26,19 @@ async fn main() -> anyhow::Result<()> {
     // Apply feature flags from CLI
     for feature in &cli.enable_feature {
         if let Err(e) = config_manager.set_feature_flag(feature, true) {
-            warn!("Failed to enable feature '{}': {}", feature, e);
+            warn!("Failed to enable feature '{feature}': {e}");
         }
     }
     for feature in &cli.disable_feature {
         if let Err(e) = config_manager.set_feature_flag(feature, false) {
-            warn!("Failed to disable feature '{}': {}", feature, e);
+            warn!("Failed to disable feature '{feature}': {e}");
         }
     }
 
     // Validate configuration
     if let Err(errors) = config_manager.validate_config() {
         for error in errors {
-            warn!("Configuration error: {}", error);
+            warn!("Configuration error: {error}");
         }
         return Err(anyhow::anyhow!("Configuration validation failed"));
     }
@@ -93,10 +93,10 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(cli.host);
     let port = effective_config.environment.port;
 
-    let addr = format!("{}:{}", host, port);
+    let addr = format!("{host}:{port}");
     info!("Starting Straico proxy server...");
     info!("Environment: {}", effective_config.environment.environment);
-    info!("Server is running at http://{}", addr);
+    info!("Server is running at http://{addr}");
     info!("Completions endpoint is at /v1/chat/completions");
     if cli.print_request_raw {
         info!("Printing raw requests");

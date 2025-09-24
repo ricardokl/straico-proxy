@@ -32,11 +32,11 @@ async fn create_test_app(
 
 #[actix_web::test]
 async fn test_chat_completion_endpoint_exists() {
-    let mut app = create_test_app().await;
+    let app = create_test_app().await;
 
     let req = test::TestRequest::post()
         .uri("/v1/chat/completions")
-        .set_json(&json!({
+        .set_json(json!({
             "model": "gpt-3.5-turbo",
             "messages": [
                 {"role": "user", "content": "Hello"}
@@ -44,7 +44,7 @@ async fn test_chat_completion_endpoint_exists() {
         }))
         .to_request();
 
-    let resp = test::call_service(&mut app, req).await;
+    let resp = test::call_service(&app, req).await;
 
     assert!(resp.status().is_server_error() || resp.status().is_client_error());
 }
@@ -79,11 +79,11 @@ async fn test_chat_completion_endpoint_exists() {
 
 #[actix_web::test]
 async fn test_chat_completion_content_formats() {
-    let mut app = create_test_app().await;
+    let app = create_test_app().await;
 
     let req = test::TestRequest::post()
         .uri("/v1/chat/completions")
-        .set_json(&json!({
+        .set_json(json!({
             "model": "gpt-3.5-turbo",
             "messages": [
                 {"role": "user", "content": "Hello world"}
@@ -91,12 +91,12 @@ async fn test_chat_completion_content_formats() {
         }))
         .to_request();
 
-    let resp = test::call_service(&mut app, req).await;
+    let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_server_error() || resp.status().is_success());
 
     let req = test::TestRequest::post()
         .uri("/v1/chat/completions")
-        .set_json(&json!({
+        .set_json(json!({
             "model": "gpt-3.5-turbo",
             "messages": [
                 {
@@ -109,6 +109,6 @@ async fn test_chat_completion_content_formats() {
         }))
         .to_request();
 
-    let resp = test::call_service(&mut app, req).await;
+    let resp = test::call_service(&app, req).await;
     assert!(resp.status().is_server_error() || resp.status().is_success());
 }

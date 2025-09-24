@@ -100,10 +100,10 @@ impl OpenAiContent {
 impl fmt::Display for OpenAiContent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            OpenAiContent::String(text) => write!(f, "{}", text),
+            OpenAiContent::String(text) => write!(f, "{text}"),
             OpenAiContent::Array(objects) => {
                 let text: String = objects.iter().map(|obj| &obj.text).cloned().collect();
-                write!(f, "{}", text)
+                write!(f, "{text}")
             }
         }
     }

@@ -320,6 +320,6 @@ async fn test_openai_parameter_defaults() {
 
     assert_eq!(request.temperature, None);
     assert_eq!(request.max_tokens, None);
-    assert_eq!(request.stream, false);
+    assert!(!request.stream);
     assert!(request.tools.is_none());
 }
