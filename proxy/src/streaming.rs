@@ -2,9 +2,9 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(test))]
-use straico_client::endpoints::completion::completion_response::Usage;
-use straico_client::endpoints::completion::completion_response::{
-    Choice, Completion, Message, ToolCall,
+use straico_client::endpoints::chat::chat_response::ChatUsage as Usage;
+use straico_client::endpoints::chat::chat_response::{
+    ChatChoice as Choice, ChatResponse as Completion, Message, ToolCall,
 };
 
 #[derive(Serialize, Debug, Clone)]
@@ -235,30 +235,10 @@ impl Iterator for CompletionStreamIterator {
 
 impl From<Message> for Delta {
     fn from(value: Message) -> Self {
-        match value {
-            Message::User { content } => Delta {
-                role: Some("user".into()),
-                content: Some(content.to_string().into()),
-                tool_calls: None,
-            },
-            Message::Assistant {
-                content,
-                tool_calls,
-            } => Delta {
-                role: Some("assistant".into()),
-                content: content.map(|c| c.to_string().into()),
-                tool_calls,
-            },
-            Message::System { content } => Delta {
-                role: Some("system".into()),
-                content: Some(content.to_string().into()),
-                tool_calls: None,
-            },
-            Message::Tool { content } => Delta {
-                role: Some("function".into()),
-                content: Some(content.to_string().into()),
-                tool_calls: None,
-            },
+        Delta {
+            role: Some(value.role.into()),
+            content: value.content.map(|c| c.to_string().into()),
+            tool_calls: value.tool_calls,
         }
     }
 }
@@ -266,9 +246,9 @@ impl From<Message> for Delta {
 impl From<Choice> for ChoiceStream {
     fn from(value: Choice) -> Self {
         Self {
-            index: value.index,
+            index: value.index.unwrap_or(0),
             delta: value.message.into(),
-            finish_reason: Some(value.finish_reason),
+            finish_reason: Some(value.finish_reason.into()),
         }
     }
 }
@@ -277,12 +257,12 @@ impl From<Completion> for CompletionStream {
     fn from(value: Completion) -> Self {
         Self {
             choices: value.choices.into_iter().map(Into::into).collect(),
-            object: value.object,
-            id: value.id,
-            model: value.model,
-            created: value.created,
+            object: value.object.unwrap_or_default().into(),
+            id: value.id.unwrap_or_default().into(),
+            model: value.model.into(),
+            created: value.created.unwrap_or(0),
             #[cfg(not(test))]
-            usage: value.usage,
+            usage: value.usage.unwrap_or_default(),
             #[cfg(test)]
             usage: (),
         }

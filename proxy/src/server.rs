@@ -44,15 +44,13 @@ pub async fn openai_chat_completion(
     }
 
     let client = data.client.clone();
-    let chat_response_data = client
+    let chat_response = client
         .chat()
         .bearer_auth(&data.key)
         .json(chat_request.clone())
         .send()
         .await?
-        .get_completion()?;
-
-    let chat_response = chat_response_data.get_chat_completion()?;
+        .get_chat_response()?;
 
     let enhanced_response = chat_response_utils::enhance_chat_response(
         chat_response,

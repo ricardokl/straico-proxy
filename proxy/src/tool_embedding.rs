@@ -1,9 +1,6 @@
 use crate::openai_types::{OpenAiChatMessage, OpenAiChatRequest, OpenAiContent};
 use serde_json::from_value;
-use straico_client::chat::{
-    PromptFormat, Tool, ANTHROPIC_PROMPT_FORMAT, COMMAND_R_PROMPT_FORMAT, DEEPSEEK_PROMPT_FORMAT,
-    LLAMA3_PROMPT_FORMAT, MISTRAL_PROMPT_FORMAT, QWEN_PROMPT_FORMAT,
-};
+use straico_client::chat::{PromptFormat, Tool};
 use straico_client::endpoints::chat::ChatRequest;
 use thiserror::Error;
 
@@ -48,8 +45,12 @@ pub fn embed_tools_in_chat_request(
         let first_user_message = openai_request
             .messages
             .iter_mut()
-            .find(|msg| msg.role == "user")
-            .ok_or(ToolEmbeddingError::NoUserMessages)?;
+            .find(|msg| msg.role == "user");
+
+        if first_user_message.is_none() {
+            return Err(ToolEmbeddingError::NoUserMessages);
+        }
+        let first_user_message = first_user_message.unwrap();
 
         let new_content = match &first_user_message.content {
             OpenAiContent::String(text) => {
@@ -81,9 +82,9 @@ fn extract_system_message_content(messages: &mut Vec<OpenAiChatMessage>) -> Opti
 }
 
 /// Generates tool XML for embedding in messages.
-pub fn generate_tool_xml(tools: &[Tool], model: &str) -> String {
+pub fn generate_tool_xml(tools: &[Tool], _model: &str) -> String {
     // Determine format based on model
-    let format = get_prompt_format_for_model(model);
+    let format = PromptFormat::default();
 
     let pre_tools = r###"
 # Tools
@@ -113,25 +114,6 @@ You are provided with available function signatures within <tools></tools> XML t
     tools_message.push_str(&post_tools);
 
     tools_message
-}
-
-/// Gets the prompt format for a specific model.
-fn get_prompt_format_for_model(model: &str) -> PromptFormat<'static> {
-    if model.to_lowercase().contains("anthropic") {
-        ANTHROPIC_PROMPT_FORMAT
-    } else if model.to_lowercase().contains("mistral") {
-        MISTRAL_PROMPT_FORMAT
-    } else if model.to_lowercase().contains("llama3") {
-        LLAMA3_PROMPT_FORMAT
-    } else if model.to_lowercase().contains("command") {
-        COMMAND_R_PROMPT_FORMAT
-    } else if model.to_lowercase().contains("qwen") {
-        QWEN_PROMPT_FORMAT
-    } else if model.to_lowercase().contains("deepseek") {
-        DEEPSEEK_PROMPT_FORMAT
-    } else {
-        PromptFormat::default()
-    }
 }
 
 #[cfg(test)]
