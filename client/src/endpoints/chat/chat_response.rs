@@ -50,7 +50,7 @@ pub struct ChatResponse {
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatChoice {
     /// The generated response message
-    pub message: ChatResponseMessage,
+    pub message: Message,
     /// Reason why the model stopped generating
     pub finish_reason: String,
     /// Zero-based position of this choice in the list of responses
@@ -69,14 +69,14 @@ pub struct ChatChoice {
 /// * `content` - The message content (may be string or structured)
 /// * `tool_calls` - Optional tool calls made by the assistant
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct ChatResponseMessage {
+pub struct Message {
     /// The role of the message sender
     pub role: String,
     /// The message content
     pub content: Option<ChatResponseContent>,
     /// Optional tool calls made by the assistant
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ChatToolCall>>,
+    pub tool_calls: Option<Vec<ToolCall>>,
 }
 
 /// Represents the content of a chat response message.
@@ -122,7 +122,7 @@ pub struct ChatContentObject {
 /// * `function` - The function call details
 /// * `tool_type` - The type of tool (typically "function")
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct ChatToolCall {
+pub struct ToolCall {
     /// Unique identifier for the tool call
     pub id: String,
     /// The function call details
@@ -153,7 +153,7 @@ pub struct ChatFunctionCall {
 /// * `prompt_tokens` - Number of tokens in the input/prompt
 /// * `completion_tokens` - Number of tokens in the generated completion
 /// * `total_tokens` - Total combined token count
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct ChatUsage {
     /// Number of tokens in the input/prompt
     pub prompt_tokens: u32,

@@ -2,11 +2,11 @@
 mod tests {
 
     use crate::{
-        StraicoClient,
         endpoints::chat::{
-            ChatChoice, ChatClientExt, ChatMessage, ChatRequest, ChatResponse, ChatResponseContent,
-            ChatResponseMessage, ChatUsage, ContentObject, builders::*, response_utils::*,
+            builders::*, response_utils::*, ChatChoice, ChatClientExt, ChatMessage, ChatRequest,
+            ChatResponse, ChatResponseContent, ChatUsage, ContentObject, Message,
         },
+        StraicoClient,
     };
 
     #[test]
@@ -246,7 +246,7 @@ mod tests {
 
     fn create_test_chat_response_with_tools() -> ChatResponse {
         let mut response = create_test_chat_response();
-        response.choices[0].message.tool_calls = Some(vec![crate::endpoints::chat::ChatToolCall {
+        response.choices[0].message.tool_calls = Some(vec![crate::endpoints::chat::ToolCall {
             id: "tool-1".to_string(),
             function: crate::endpoints::chat::ChatFunctionCall {
                 name: "test_function".to_string(),
@@ -261,7 +261,7 @@ mod tests {
         ChatResponse {
             choices: vec![
                 ChatChoice {
-                    message: ChatResponseMessage {
+                    message: Message {
                         role: "assistant".to_string(),
                         content: Some(ChatResponseContent::Text(
                             "First choice content".to_string(),
@@ -272,7 +272,7 @@ mod tests {
                     index: Some(0),
                 },
                 ChatChoice {
-                    message: ChatResponseMessage {
+                    message: Message {
                         role: "assistant".to_string(),
                         content: Some(ChatResponseContent::Text(
                             "Second choice content".to_string(),
@@ -301,7 +301,7 @@ mod tests {
 
     fn create_test_chat_choice() -> ChatChoice {
         ChatChoice {
-            message: ChatResponseMessage {
+            message: Message {
                 role: "assistant".to_string(),
                 content: Some(ChatResponseContent::Text(
                     "Test response content".to_string(),

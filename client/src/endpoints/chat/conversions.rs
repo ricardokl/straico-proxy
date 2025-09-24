@@ -1,6 +1,27 @@
-use super::{ChatContentObject, ChatMessage, ChatRequest, ChatResponseContent, ContentObject};
-use crate::chat::{Chat, Tool};
-use crate::endpoints::completion::completion_response::{Content, Message, TextObject};
+use super::{
+    chat_request::ContentObject as RequestContentObject,
+    chat_response::ChatContentObject as ResponseContentObject, ChatMessage, ChatRequest,
+    ChatResponseContent, ContentObject,
+};
+use crate::chat::{Chat, Message, Tool};
+
+impl From<RequestContentObject> for ResponseContentObject {
+    fn from(obj: RequestContentObject) -> Self {
+        ResponseContentObject {
+            content_type: obj.content_type,
+            text: obj.text,
+        }
+    }
+}
+
+impl From<ResponseContentObject> for RequestContentObject {
+    fn from(obj: ResponseContentObject) -> Self {
+        RequestContentObject {
+            content_type: obj.content_type,
+            text: obj.text,
+        }
+    }
+}
 
 /// Conversion utilities for the new chat endpoint format.
 ///
@@ -9,105 +30,22 @@ use crate::endpoints::completion::completion_response::{Content, Message, TextOb
 ///
 /// Note: Direct From implementations for Vec<ContentObject> violate orphan rules
 /// Instead, we provide utility functions for these conversions
-impl From<Content> for Vec<ContentObject> {
-    /// Converts existing Content enum to new ContentObject format.
-    ///
-    /// # Arguments
-    /// * `content` - The existing Content enum
-    ///
-    /// # Returns
-    /// A vector of ContentObject representing the same content
-    fn from(content: Content) -> Self {
-        match content {
-            Content::Text(text) => vec![ContentObject::text(text.as_ref())],
-            Content::TextArray(text_objects) => text_objects
-                .into_iter()
-                .map(|obj| match obj {
-                    TextObject::Text { text } => ContentObject::text(text.as_ref()),
-                })
-                .collect(),
-        }
-    }
-}
-
 impl From<Message> for ChatMessage {
-    /// Converts existing Message enum to new ChatMessage format.
-    ///
-    /// # Arguments
-    /// * `message` - The existing Message enum
-    ///
-    /// # Returns
-    /// A ChatMessage with the same role and converted content
     fn from(message: Message) -> Self {
-        match message {
-            Message::User { content } => ChatMessage::new("user", content.into()),
-            Message::Assistant {
-                content,
-                tool_calls: _,
-            } => {
-                // Note: Tool calls are handled separately in the new format
-                match content {
-                    Some(content) => ChatMessage::new("assistant", content.into()),
-                    None => ChatMessage::new("assistant", vec![]),
-                }
-            }
-            Message::System { content } => ChatMessage::new("system", content.into()),
-            Message::Tool { content } => ChatMessage::new("tool", content.into()),
-        }
+        let content = message.content.map_or(vec![], |c| c.into());
+        ChatMessage::new(message.role, content)
     }
 }
 
-impl From<Chat> for Vec<ChatMessage> {
-    /// Converts existing Chat to new ChatMessage vector format.
-    ///
-    /// # Arguments
-    /// * `chat` - The existing Chat wrapper
-    ///
-    /// # Returns
-    /// A vector of ChatMessage representing the same conversation
-    fn from(chat: Chat) -> Self {
-        chat.iter().map(|message| message.clone().into()).collect()
-    }
-}
-
-impl From<Vec<ChatContentObject>> for Content {
-    /// Converts new ChatContentObject vector to existing Content format.
-    ///
-    /// # Arguments
-    /// * `objects` - Vector of ChatContentObject
-    ///
-    /// # Returns
-    /// Content enum representing the same content
-    fn from(objects: Vec<ChatContentObject>) -> Self {
-        if objects.len() == 1 {
-            Content::Text(objects[0].text.clone().into())
-        } else {
-            let text_objects = objects
-                .into_iter()
-                .map(|obj| TextObject::Text {
-                    text: obj.text.into(),
-                })
-                .collect();
-            Content::TextArray(text_objects)
-        }
-    }
-}
-
-impl From<ChatResponseContent> for Content {
-    /// Converts ChatResponseContent to existing Content format.
-    ///
-    /// # Arguments
-    /// * `content` - The ChatResponseContent to convert
-    ///
-    /// # Returns
-    /// Content enum representing the same content
+impl From<ChatResponseContent> for Vec<RequestContentObject> {
     fn from(content: ChatResponseContent) -> Self {
         match content {
-            ChatResponseContent::Text(text) => Content::Text(text.into()),
-            ChatResponseContent::Array(objects) => objects.into(),
+            ChatResponseContent::Text(text) => vec![RequestContentObject::text(text)],
+            ChatResponseContent::Array(objects) => objects.into_iter().map(|o| o.into()).collect(),
         }
     }
 }
+
 
 /// Builder for creating ChatRequest instances with OpenAI compatibility.
 pub struct OpenAiChatRequestBuilder {
@@ -138,7 +76,7 @@ impl OpenAiChatRequestBuilder {
 
     /// Adds messages from an existing Chat.
     pub fn messages_from_chat(mut self, chat: Chat) -> Self {
-        let chat_messages: Vec<ChatMessage> = chat.into();
+        let chat_messages: Vec<ChatMessage> = chat.0.into_iter().map(|m| m.into()).collect();
         self.messages.extend(chat_messages);
         self
     }
