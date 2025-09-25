@@ -1,0 +1,49 @@
+{
+  "model": "google/gemini-2.0-flash-001",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What are the titles of some James Joyce books?"
+    },
+    {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+        {
+          "id": "call_abc123",
+          "type": "function",
+          "function": {
+            "name": "search_gutenberg_books",
+            "arguments": "{\"search_terms\": [\"James\", \"Joyce\"]}"
+          }
+        }
+      ]
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_abc123",
+      "content": "[{\"id\": 4300, \"title\": \"Ulysses\", \"authors\": [{\"name\": \"Joyce, James\"}]}]"
+    }
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "search_gutenberg_books",
+        "description": "Search for books in the Project Gutenberg library",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "search_terms": {
+              "type": "array",
+              "items": {"type": "string"},
+              "description": "List of search terms to find books"
+            }
+          },
+          "required": ["search_terms"]
+        }
+      }
+    }
+  ]
+}
+
