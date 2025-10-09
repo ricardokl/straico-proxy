@@ -1,5 +1,7 @@
-use crate::openai_types::{OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiTool, OpenAiFunction};
-use straico_client::chat::{Tool, ToolCallsFormat};
+use crate::openai_types::{
+    OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiFunction, OpenAiTool,
+};
+use straico_client::chat::ToolCallsFormat;
 use straico_client::endpoints::chat::ChatRequest;
 use thiserror::Error;
 
@@ -18,16 +20,7 @@ pub fn embed_tools_in_chat_request(
 ) -> Result<ChatRequest, ToolEmbeddingError> {
     let system_message_content = extract_system_message_content(&mut openai_request.messages);
 
-    let tools: Option<Vec<Tool>> = openai_request
-        .tools
-        .take()
-        .map(|openai_tools| {
-            openai_tools
-                .into_iter()
-                .map(|openai_tool| convert_openai_tool_to_straico_tool(openai_tool))
-                .collect::<Result<Vec<Tool>, ToolEmbeddingError>>()
-        })
-        .transpose()?;
+    let tools = openai_request.tools.take();
 
     let mut preamble = String::new();
     if let Some(system_content) = system_message_content {
@@ -36,6 +29,15 @@ pub fn embed_tools_in_chat_request(
 
     if let Some(tools) = &tools {
         if !tools.is_empty() {
+            for tool in tools {
+                if tool.tool_type != "function" {
+                    return Err(ToolEmbeddingError::InvalidTool(format!(
+                        "Unsupported tool type: {}",
+                        tool.tool_type
+                    )));
+                }
+            }
+
             if !preamble.is_empty() {
                 preamble.push_str("\n\n");
             }
@@ -56,11 +58,11 @@ pub fn embed_tools_in_chat_request(
         let first_user_message = first_user_message.unwrap();
 
         let new_content = match &first_user_message.content {
-            OpenAiContent::String(text) => {
-                OpenAiContent::String(format!("{preamble}
+            OpenAiContent::String(text) => OpenAiContent::String(format!(
+                "{preamble}
 
-{text}"))
-            }
+{text}"
+            )),
             OpenAiContent::Array(objects) => {
                 let original_text = objects
                     .iter()
@@ -68,9 +70,11 @@ pub fn embed_tools_in_chat_request(
                     .map(|obj| obj.text.as_str())
                     .collect::<Vec<_>>()
                     .join(" ");
-                OpenAiContent::String(format!("{preamble}
+                OpenAiContent::String(format!(
+                    "{preamble}
 
-{original_text}"))
+{original_text}"
+                ))
             }
             OpenAiContent::Null => {
                 OpenAiContent::String(preamble) // Just use preamble if original content was null
@@ -84,21 +88,6 @@ pub fn embed_tools_in_chat_request(
         .map_err(ToolEmbeddingError::ContentMerging)
 }
 
-fn convert_openai_tool_to_straico_tool(openai_tool: OpenAiTool) -> Result<Tool, ToolEmbeddingError> {
-    if openai_tool.tool_type != "function" {
-        return Err(ToolEmbeddingError::InvalidTool(format!(
-            "Unsupported tool type: {}",
-            openai_tool.tool_type
-        )));
-    }
-
-    Ok(Tool::Function {
-        name: openai_tool.function.name,
-        description: openai_tool.function.description,
-        parameters: openai_tool.function.parameters,
-    })
-}
-
 fn extract_system_message_content(messages: &mut Vec<OpenAiChatMessage>) -> Option<String> {
     messages
         .iter()
@@ -107,7 +96,7 @@ fn extract_system_message_content(messages: &mut Vec<OpenAiChatMessage>) -> Opti
 }
 
 /// Generates tool XML for embedding in messages.
-pub fn generate_tool_xml(tools: &[Tool], _model: &str) -> String {
+pub fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> String {
     // Determine format based on model
     let format = ToolCallsFormat::default();
 
@@ -134,7 +123,7 @@ You are provided with available function signatures within <tools></tools> XML t
     let mut tools_message = String::new();
     tools_message.push_str(pre_tools);
     for tool in tools {
-        tools_message.push_str(&serde_json::to_string_pretty(tool).unwrap());
+        tools_message.push_str(&serde_json::to_string_pretty(&tool.function).unwrap());
     }
     tools_message.push_str(&post_tools);
 
