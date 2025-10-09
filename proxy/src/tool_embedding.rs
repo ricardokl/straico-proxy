@@ -1,5 +1,4 @@
-use crate::openai_types::{OpenAiChatMessage, OpenAiChatRequest, OpenAiContent};
-use serde_json::from_value;
+use crate::openai_types::{OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiTool, OpenAiFunction};
 use straico_client::chat::{Tool, ToolCallsFormat};
 use straico_client::endpoints::chat::ChatRequest;
 use thiserror::Error;
@@ -22,9 +21,13 @@ pub fn embed_tools_in_chat_request(
     let tools: Option<Vec<Tool>> = openai_request
         .tools
         .take()
-        .map(|v| from_value(v).map_err(|e| ToolEmbeddingError::InvalidTool(e.to_string())))
-        .transpose()?
-        .flatten();
+        .map(|openai_tools| {
+            openai_tools
+                .into_iter()
+                .map(|openai_tool| convert_openai_tool_to_straico_tool(openai_tool))
+                .collect::<Result<Vec<Tool>, ToolEmbeddingError>>()
+        })
+        .transpose()?;
 
     let mut preamble = String::new();
     if let Some(system_content) = system_message_content {
@@ -54,7 +57,9 @@ pub fn embed_tools_in_chat_request(
 
         let new_content = match &first_user_message.content {
             OpenAiContent::String(text) => {
-                OpenAiContent::String(format!("{preamble}\n\n{text}"))
+                OpenAiContent::String(format!("{preamble}
+
+{text}"))
             }
             OpenAiContent::Array(objects) => {
                 let original_text = objects
@@ -63,7 +68,12 @@ pub fn embed_tools_in_chat_request(
                     .map(|obj| obj.text.as_str())
                     .collect::<Vec<_>>()
                     .join(" ");
-                OpenAiContent::String(format!("{preamble}\n\n{original_text}"))
+                OpenAiContent::String(format!("{preamble}
+
+{original_text}"))
+            }
+            OpenAiContent::Null => {
+                OpenAiContent::String(preamble) // Just use preamble if original content was null
             }
         };
         first_user_message.content = new_content;
@@ -72,6 +82,21 @@ pub fn embed_tools_in_chat_request(
     openai_request
         .to_straico_request()
         .map_err(ToolEmbeddingError::ContentMerging)
+}
+
+fn convert_openai_tool_to_straico_tool(openai_tool: OpenAiTool) -> Result<Tool, ToolEmbeddingError> {
+    if openai_tool.tool_type != "function" {
+        return Err(ToolEmbeddingError::InvalidTool(format!(
+            "Unsupported tool type: {}",
+            openai_tool.tool_type
+        )));
+    }
+
+    Ok(Tool::Function {
+        name: openai_tool.function.name,
+        description: openai_tool.function.description,
+        parameters: openai_tool.function.parameters,
+    })
 }
 
 fn extract_system_message_content(messages: &mut Vec<OpenAiChatMessage>) -> Option<String> {
@@ -147,24 +172,26 @@ mod tests {
                     content: OpenAiContent::String("You are a helpful assistant.".to_string()),
                     tool_call_id: None,
                     name: None,
+                    tool_calls: None,
                 },
                 OpenAiChatMessage {
                     role: "user".to_string(),
                     content: OpenAiContent::String("Hello".to_string()),
                     tool_call_id: None,
                     name: None,
+                    tool_calls: None,
                 },
             ],
-            tools: Some(serde_json::json!([
-                {
-                    "type": "function",
-                    "function": {
-                        "name": "test_function",
-                        "description": "A test function",
-                        "parameters": { "type": "object", "properties": {} }
-                    }
+            tools: Some(vec![
+                OpenAiTool {
+                    tool_type: "function".to_string(),
+                    function: OpenAiFunction {
+                        name: "test_function".to_string(),
+                        description: Some("A test function".to_string()),
+                        parameters: Some(serde_json::json!({ "type": "object", "properties": {} })),
+                    },
                 }
-            ])),
+            ]),
             ..Default::default()
         };
 

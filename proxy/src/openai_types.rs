@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
 
 /// OpenAI-compatible content format that can be either a string or an array of content objects.
@@ -6,6 +7,7 @@ use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
 /// This enum handles the dual content format support required by the OpenAI API:
 /// - String format: `"content": "Hello world"`
 /// - Array format: `"content": [{"type": "text", "text": "Hello world"}]`
+/// - Null format: `"content": null` (used when there's no content but other fields like tool_calls exist)
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(untagged)]
 pub enum OpenAiContent {
@@ -13,6 +15,8 @@ pub enum OpenAiContent {
     String(String),
     /// Array of structured content objects
     Array(Vec<OpenAiContentObject>),
+    /// Null content (empty content)
+    Null,
 }
 
 /// Represents a single content object in the OpenAI array format.
@@ -26,6 +30,77 @@ pub struct OpenAiContentObject {
     pub content_type: String,
     /// The actual text content
     pub text: String,
+}
+
+/// Represents a function definition within a tool.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct OpenAiFunction {
+    /// The name of the function
+    pub name: String,
+    /// A description of what the function does
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// The parameters the function accepts, described as a JSON Schema
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parameters: Option<Value>,
+}
+
+/// Represents a tool available to the model.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct OpenAiTool {
+    /// The type of the tool (typically "function")
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    /// The function definition
+    pub function: OpenAiFunction,
+}
+
+/// Represents a tool choice option.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(untagged)]
+pub enum OpenAiToolChoice {
+    /// A string value like "none", "auto", or "required"
+    String(String),
+    /// An object specifying a specific tool to use
+    Object(OpenAiNamedToolChoice),
+}
+
+/// Represents a named tool choice.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct OpenAiNamedToolChoice {
+    /// The type of the tool (typically "function")
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    /// The specific function to use
+    pub function: OpenAiFunctionName,
+}
+
+/// Represents a function name for tool choice.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct OpenAiFunctionName {
+    /// The name of the function
+    pub name: String,
+}
+
+/// Represents a function call within a tool call.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct OpenAiFunctionCall {
+    /// The name of the function being called
+    pub name: String,
+    /// The arguments to pass to the function, as a JSON string
+    pub arguments: String,
+}
+
+/// Represents a tool call made by the assistant.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct OpenAiToolCall {
+    /// The ID of the tool call
+    pub id: String,
+    /// The type of the tool (typically "function")
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    /// The function call details
+    pub function: OpenAiFunctionCall,
 }
 
 /// Represents a chat message in OpenAI format.
@@ -44,6 +119,9 @@ pub struct OpenAiChatMessage {
     /// Optional name for function/tool messages
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Optional tool calls made by assistant messages
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<OpenAiToolCall>>,
 }
 
 /// Represents a complete OpenAI chat request.
@@ -71,10 +149,10 @@ pub struct OpenAiChatRequest {
     pub stream: bool,
     /// Optional tools/functions available to the model
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<serde_json::Value>, // Will be handled in Phase 2
+    pub tools: Option<Vec<OpenAiTool>>,
     /// Optional tool choice
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<String>,
+    pub tool_choice: Option<OpenAiToolChoice>,
 }
 
 use std::fmt;
@@ -93,6 +171,9 @@ impl OpenAiContent {
                 .iter()
                 .map(|obj| ContentObject::new(&obj.content_type, &obj.text))
                 .collect(),
+            OpenAiContent::Null => {
+                vec![] // Empty content array for null
+            }
         }
     }
 }
@@ -105,6 +186,7 @@ impl fmt::Display for OpenAiContent {
                 let text: String = objects.iter().map(|obj| &obj.text).cloned().collect();
                 write!(f, "{text}")
             }
+            OpenAiContent::Null => write!(f, ""),
         }
     }
 }

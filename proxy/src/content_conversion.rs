@@ -75,6 +75,7 @@ pub fn normalize_openai_content_to_array(content: OpenAiContent) -> Vec<OpenAiCo
             }]
         }
         OpenAiContent::Array(objects) => objects,
+        OpenAiContent::Null => vec![], // Empty array for null content
     }
 }
 
