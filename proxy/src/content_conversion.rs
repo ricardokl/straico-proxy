@@ -3,59 +3,8 @@
 //! This module provides comprehensive conversion functions to handle the dual content
 //! format support required by the OpenAI API compatibility layer.
 
-use crate::openai_types::{OpenAiChatMessage, OpenAiContent, OpenAiContentObject};
+use crate::openai_types::{OpenAiContent, OpenAiContentObject};
 use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
-
-/// Converts OpenAI content format to Straico ContentObject vector.
-///
-/// Handles both string and array content formats from OpenAI requests.
-///
-/// # Arguments
-/// * `content` - The OpenAI content in either string or array format
-///
-/// # Returns
-/// A vector of ContentObject in Straico format
-pub fn convert_openai_content_to_straico(content: OpenAiContent) -> Vec<ContentObject> {
-    content.to_straico_content()
-}
-
-/// Converts OpenAI chat message to Straico ChatMessage format.
-///
-/// # Arguments
-/// * `message` - The OpenAI chat message to convert
-///
-/// # Returns
-/// A ChatMessage in Straico format
-pub fn convert_openai_message_to_straico(message: OpenAiChatMessage) -> ChatMessage {
-    message.to_straico_message()
-}
-
-/// Validates that content objects are well-formed and supported.
-///
-/// # Arguments
-/// * `content` - The content objects to validate
-///
-/// # Returns
-/// Ok(()) if valid, Err(String) with error message if invalid
-pub fn validate_content_objects(content: &[ContentObject]) -> Result<(), String> {
-    if content.is_empty() {
-        return Err("Content array cannot be empty".to_string());
-    }
-
-    for (i, obj) in content.iter().enumerate() {
-        if obj.content_type.trim().is_empty() {
-            return Err(format!("Content object {i} has empty type"));
-        }
-        if obj.text.trim().is_empty() {
-            return Err(format!("Content object {i} has empty text"));
-        }
-        // Currently only support "text" type
-        if obj.content_type != "text" {
-            return Err(format!("Unsupported content type: {}", obj.content_type));
-        }
-    }
-    Ok(())
-}
 
 /// Normalizes OpenAI content to always be in array format.
 ///
@@ -185,7 +134,7 @@ mod tests {
     #[test]
     fn test_convert_string_content() {
         let content = OpenAiContent::String("Hello world".to_string());
-        let result = convert_openai_content_to_straico(content);
+        let result = content.to_straico_content();
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].content_type, "text");
@@ -205,22 +154,11 @@ mod tests {
             },
         ]);
 
-        let result = convert_openai_content_to_straico(content);
+        let result = content.to_straico_content();
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].text, "Hello");
         assert_eq!(result[1].text, " world");
-    }
-
-    #[test]
-    fn test_validate_content_objects() {
-        let valid_content = vec![ContentObject::text("Hello"), ContentObject::text("World")];
-
-        assert!(validate_content_objects(&valid_content).is_ok());
-
-        let invalid_content = vec![ContentObject::new("image", "data")];
-
-        assert!(validate_content_objects(&invalid_content).is_err());
     }
 
     #[test]
