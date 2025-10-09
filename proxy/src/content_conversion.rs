@@ -4,7 +4,7 @@
 //! format support required by the OpenAI API compatibility layer.
 
 use crate::openai_types::{OpenAiContent, OpenAiContentObject};
-use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
+use straico_client::endpoints::chat::ContentObject;
 
 /// Normalizes OpenAI content to always be in array format.
 ///
@@ -26,37 +26,6 @@ pub fn normalize_openai_content_to_array(content: OpenAiContent) -> Vec<OpenAiCo
         OpenAiContent::Array(objects) => objects,
         OpenAiContent::Null => vec![], // Empty array for null content
     }
-}
-
-/// Converts Straico ContentObject back to OpenAI format.
-///
-/// This is useful for response conversion or testing.
-///
-/// # Arguments
-/// * `content` - Vector of Straico ContentObject
-///
-/// # Returns
-/// OpenAiContent in array format
-pub fn convert_straico_content_to_openai(content: Vec<ContentObject>) -> OpenAiContent {
-    let objects = content
-        .into_iter()
-        .map(|obj| OpenAiContentObject {
-            content_type: obj.content_type,
-            text: obj.text,
-        })
-        .collect();
-    OpenAiContent::Array(objects)
-}
-
-/// Merges multiple content arrays into a single array.
-///
-/// # Arguments
-/// * `content_arrays` - Vector of content arrays to merge
-///
-/// # Returns
-/// Single merged vector of ContentObject
-pub fn merge_content_arrays(content_arrays: Vec<Vec<ContentObject>>) -> Vec<ContentObject> {
-    content_arrays.into_iter().flatten().collect()
 }
 
 /// Splits large content into smaller chunks for processing.
@@ -99,86 +68,4 @@ pub fn extract_text_from_content(content: &[ContentObject]) -> String {
         .cloned()
         .collect::<Vec<_>>()
         .join("")
-}
-
-/// Creates a default system message for chat requests.
-///
-/// # Returns
-/// ChatMessage with default system instructions
-pub fn create_default_system_message() -> ChatMessage {
-    ChatMessage::system("You are a helpful assistant.")
-}
-
-/// Ensures a chat request has a system message.
-///
-/// If no system message exists, adds a default one at the beginning.
-///
-/// # Arguments
-/// * `request` - The chat request to check and modify
-///
-/// # Returns
-/// Modified chat request with guaranteed system message
-pub fn ensure_system_message(mut request: ChatRequest) -> ChatRequest {
-    // Check if first message is a system message
-    if request.messages.is_empty() || request.messages[0].role != "system" {
-        // Insert default system message at the beginning
-        request.messages.insert(0, create_default_system_message());
-    }
-    request
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_convert_string_content() {
-        let content = OpenAiContent::String("Hello world".to_string());
-        let result = content.to_straico_content();
-
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].content_type, "text");
-        assert_eq!(result[0].text, "Hello world");
-    }
-
-    #[test]
-    fn test_convert_array_content() {
-        let content = OpenAiContent::Array(vec![
-            OpenAiContentObject {
-                content_type: "text".to_string(),
-                text: "Hello".to_string(),
-            },
-            OpenAiContentObject {
-                content_type: "text".to_string(),
-                text: " world".to_string(),
-            },
-        ]);
-
-        let result = content.to_straico_content();
-
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].text, "Hello");
-        assert_eq!(result[1].text, " world");
-    }
-
-    #[test]
-    fn test_normalize_content() {
-        let string_content = OpenAiContent::String("Test".to_string());
-        let normalized = normalize_openai_content_to_array(string_content);
-
-        assert_eq!(normalized.len(), 1);
-        assert_eq!(normalized[0].content_type, "text");
-        assert_eq!(normalized[0].text, "Test");
-    }
-
-    #[test]
-    fn test_split_content_into_chunks() {
-        let long_text = "a".repeat(150);
-        let chunks = split_content_into_chunks(&long_text, 50);
-
-        assert_eq!(chunks.len(), 3);
-        assert_eq!(chunks[0].text.len(), 50);
-        assert_eq!(chunks[1].text.len(), 50);
-        assert_eq!(chunks[2].text.len(), 50);
-    }
 }

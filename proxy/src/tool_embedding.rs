@@ -1,6 +1,4 @@
-use crate::openai_types::{
-    OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiFunction, OpenAiTool,
-};
+use crate::openai_types::{OpenAiChatMessage, OpenAiChatRequest, OpenAiContent, OpenAiTool};
 use straico_client::chat::ToolCallsFormat;
 use straico_client::endpoints::chat::ChatRequest;
 use thiserror::Error;
@@ -149,7 +147,7 @@ impl Default for OpenAiChatRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openai_types::{OpenAiChatMessage, OpenAiContent};
+    use crate::openai_types::{OpenAiChatMessage, OpenAiContent, OpenAiFunction};
 
     #[test]
     fn test_embed_tools_in_chat_request() {
@@ -171,16 +169,14 @@ mod tests {
                     tool_calls: None,
                 },
             ],
-            tools: Some(vec![
-                OpenAiTool {
-                    tool_type: "function".to_string(),
-                    function: OpenAiFunction {
-                        name: "test_function".to_string(),
-                        description: Some("A test function".to_string()),
-                        parameters: Some(serde_json::json!({ "type": "object", "properties": {} })),
-                    },
-                }
-            ]),
+            tools: Some(vec![OpenAiTool {
+                tool_type: "function".to_string(),
+                function: OpenAiFunction {
+                    name: "test_function".to_string(),
+                    description: Some("A test function".to_string()),
+                    parameters: Some(serde_json::json!({ "type": "object", "properties": {} })),
+                },
+            }]),
             ..Default::default()
         };
 
