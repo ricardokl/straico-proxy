@@ -19,14 +19,6 @@ pub struct Cli {
     #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
     pub api_key: Option<String>,
 
-    /// Configuration file path
-    #[arg(long, default_value = "config.toml")]
-    pub config: String,
-
-    /// Create a default configuration file and exit
-    #[arg(long)]
-    pub create_config: bool,
-
     /// Log to file (proxy.log)
     #[arg(long)]
     pub log_to_file: bool,
@@ -53,22 +45,6 @@ pub struct Cli {
     pub include_debug_info: bool,
 
     /// Set log level (trace, debug, info, warn, error)
-    #[arg(long)]
-    pub log_level: Option<String>,
-
-    /// Environment (development, staging, production)
-    #[arg(long)]
-    pub environment: Option<String>,
-
-    /// Enable feature flag
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub enable_feature: Vec<String>,
-
-    /// Disable feature flag
-    #[arg(long, action = clap::ArgAction::Append)]
-    pub disable_feature: Vec<String>,
-
-    /// Request timeout in seconds
-    #[arg(long)]
-    pub timeout: Option<u64>,
+    #[arg(long, default_value = "info")]
+    pub log_level: String,
 }
