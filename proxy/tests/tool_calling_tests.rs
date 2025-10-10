@@ -1,6 +1,5 @@
 use straico_proxy::openai_types::{
-    OpenAiChatRequest, OpenAiContent, OpenAiTool, OpenAiFunction,
-    OpenAiToolCall, OpenAiFunctionCall, OpenAiToolChoice
+    OpenAiChatRequest, OpenAiContent, OpenAiToolChoice
 };
 
 #[test]

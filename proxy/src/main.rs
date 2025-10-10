@@ -2,102 +2,50 @@ use actix_web::{web, App, HttpResponse, HttpServer};
 use anyhow::Context;
 use clap::Parser;
 use flexi_logger::{FileSpec, Logger, WriteMode};
-use log::{info, warn};
+use log::{error, info};
 use straico_client::client::StraicoClient;
-use straico_proxy::{cli::Cli, config_manager::ConfigManager, server};
+use straico_proxy::{cli::Cli, config::ProxyConfig, server};
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Handle config file creation
-    if cli.create_config {
-        if let Err(e) = ConfigManager::create_default_config(&cli.config) {
-            return Err(anyhow::anyhow!("Failed to create config file: {}", e));
-        }
-        info!("Created default configuration file: {}", cli.config);
-        return Ok(());
-    }
-
-    // Load and merge configuration
-    let mut config_manager = ConfigManager::new(&cli.config);
-    config_manager.merge_with_cli_args(&cli);
-
-    // Apply feature flags from CLI
-    for feature in &cli.enable_feature {
-        if let Err(e) = config_manager.set_feature_flag(feature, true) {
-            warn!("Failed to enable feature '{feature}': {e}");
-        }
-    }
-    for feature in &cli.disable_feature {
-        if let Err(e) = config_manager.set_feature_flag(feature, false) {
-            warn!("Failed to disable feature '{feature}': {e}");
-        }
-    }
-
-    // Validate configuration
-    if let Err(errors) = config_manager.validate_config() {
-        for error in errors {
-            warn!("Configuration error: {error}");
-        }
-        return Err(anyhow::anyhow!("Configuration validation failed"));
-    }
-
-    let effective_config = config_manager.get_effective_config();
-
     // Set up logging
-    let log_level = cli
-        .log_level
-        .as_deref()
-        .or(Some(effective_config.environment.log_level.as_str()))
-        .unwrap_or({
-            if cli.print_request_raw
-                || cli.print_request_converted
-                || cli.print_response_raw
-                || cli.print_response_converted
-            {
-                "debug"
-            } else {
-                "info"
-            }
-        });
+    let mut logger = Logger::try_with_str(&cli.log_level)
+        .unwrap_or_else(|e| {
+            // Fallback to a default logger if the given level is invalid
+            eprintln!("Invalid log level '{}': {}. Defaulting to 'info'.", cli.log_level, e);
+            Logger::try_with_str("info").unwrap()
+        })
+        .write_mode(WriteMode::BufferAndFlush);
 
-    let mut logger = Logger::try_with_str(log_level)?.write_mode(WriteMode::BufferAndFlush);
-
-    if cli.log_to_file || effective_config.features.enable_request_logging {
+    if cli.log_to_file {
         logger = logger.log_to_file(FileSpec::default());
         if cli.log_to_stdout {
             logger = logger.duplicate_to_stderr(flexi_logger::Duplicate::All);
         }
-    } else if cli.log_to_stdout {
-        logger = logger.log_to_stderr();
     } else {
-        // Default behavior: log info to stdout to show server is running
+        // Default behavior: log to stdout if no file logging is specified,
+        // or if both file and stdout are requested.
         logger = logger.log_to_stderr();
     }
 
     logger.start()?;
 
+    // Ensure API key is present
     let api_key = match cli.api_key {
         Some(key) => key,
         None => {
-            warn!("API key not set, exiting");
-            return Ok(());
+            error!("STRAICO_API_KEY is not set. Please provide it using --api-key or the STRAICO_API_KEY environment variable.");
+            return Err(anyhow::anyhow!("STRAICO_API_KEY is not set."));
         }
     };
 
-    let host = cli
-        .environment
-        .as_deref()
-        .map(|_| effective_config.environment.host.clone())
-        .unwrap_or(cli.host);
-    let port = effective_config.environment.port;
-
-    let addr = format!("{host}:{port}");
+    let addr = format!("{}:{}", cli.host, cli.port);
     info!("Starting Straico proxy server...");
-    info!("Environment: {}", effective_config.environment.environment);
-    info!("Server is running at http://{addr}");
+    info!("Server is running at http://{}", addr);
     info!("Completions endpoint is at /v1/chat/completions");
+
     if cli.print_request_raw {
         info!("Printing raw requests");
     }
@@ -110,37 +58,34 @@ async fn main() -> anyhow::Result<()> {
     if cli.print_response_converted {
         info!("Printing converted responses");
     }
+    if cli.include_debug_info {
+        info!("Including debug info in responses");
+    }
 
-    // Display configuration summary
-    info!("Configuration Summary:");
-    info!(
-        "  - Environment: {}",
-        effective_config.environment.environment
-    );
-    info!(
-        "  - Include debug info: {}",
-        effective_config.proxy.include_debug_info
-    );
-    info!(
-        "  - Enabled features: {:?}",
-        effective_config.get_enabled_features()
-    );
+    // Create ProxyConfig from CLI arguments
+    let proxy_config = ProxyConfig {
+        enable_chat_streaming: false, // Streaming is not implemented
+        include_debug_info: cli.include_debug_info,
+    };
 
     HttpServer::new(move || {
+        let app_state = server::AppState {
+            client: StraicoClient::new(),
+            key: api_key.clone(),
+            config: proxy_config.clone(),
+            print_request_raw: cli.print_request_raw,
+            print_request_converted: cli.print_request_converted,
+            print_response_raw: cli.print_response_raw,
+            print_response_converted: cli.print_response_converted,
+        };
+
         App::new()
-            .app_data(web::Data::new(server::AppState {
-                client: StraicoClient::new(),
-                key: api_key.clone(),
-                config: effective_config.proxy.clone(),
-                print_request_raw: cli.print_request_raw,
-                print_request_converted: cli.print_request_converted,
-                print_response_raw: cli.print_response_raw,
-                print_response_converted: cli.print_response_converted,
-            }))
+            .app_data(web::Data::new(app_state))
             .service(server::openai_chat_completion)
             .default_service(web::to(HttpResponse::NotFound))
     })
-    .bind(addr)?
+    .bind(&addr)
+    .with_context(|| format!("Failed to bind to address: {}", addr))?
     .run()
     .await
     .context("Failed to run HTTP server")
