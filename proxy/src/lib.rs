@@ -6,7 +6,6 @@ pub mod openai_types;
 pub mod response_utils;
 pub mod server;
 pub mod streaming;
-pub mod tool_embedding;
 
 pub use config::ProxyConfig;
 pub use error::CustomError;

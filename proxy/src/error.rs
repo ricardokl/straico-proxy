@@ -21,7 +21,7 @@ pub enum CustomError {
     #[error("An internal error occurred")]
     Anyhow(#[from] AnyhowError),
     #[error("Tool embedding error: {0}")]
-    ToolEmbedding(#[from] crate::tool_embedding::ToolEmbeddingError),
+    ToolEmbedding(String),
     #[error("Request validation error: {0}")]
     RequestValidation(String),
 }
@@ -53,7 +53,6 @@ impl ResponseError for CustomError {
 
     fn error_response(&self) -> HttpResponse {
         let error_message = match self {
-            CustomError::ToolEmbedding(e) => format!("Tool processing failed: {e}"),
             CustomError::RequestValidation(e) => format!("Invalid request: {e}"),
             _ => self.to_string(),
         };

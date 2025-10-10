@@ -14,7 +14,10 @@ async fn main() -> anyhow::Result<()> {
     let mut logger = Logger::try_with_str(&cli.log_level)
         .unwrap_or_else(|e| {
             // Fallback to a default logger if the given level is invalid
-            eprintln!("Invalid log level '{}': {}. Defaulting to 'info'.", cli.log_level, e);
+            eprintln!(
+                "Invalid log level '{}': {}. Defaulting to 'info'.",
+                cli.log_level, e
+            );
             Logger::try_with_str("info").unwrap()
         })
         .write_mode(WriteMode::BufferAndFlush);
@@ -43,7 +46,7 @@ async fn main() -> anyhow::Result<()> {
 
     let addr = format!("{}:{}", cli.host, cli.port);
     info!("Starting Straico proxy server...");
-    info!("Server is running at http://{}", addr);
+    info!("Server is running at http://{addr}");
     info!("Completions endpoint is at /v1/chat/completions");
 
     if cli.print_request_raw {
@@ -85,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
             .default_service(web::to(HttpResponse::NotFound))
     })
     .bind(&addr)
-    .with_context(|| format!("Failed to bind to address: {}", addr))?
+    .with_context(|| format!("Failed to bind to address: {addr}"))?
     .run()
     .await
     .context("Failed to run HTTP server")

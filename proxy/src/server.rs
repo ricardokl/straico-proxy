@@ -1,6 +1,6 @@
 use crate::{
     config::ProxyConfig, error::CustomError, openai_types::OpenAiChatRequest,
-    response_utils::chat_response_utils, tool_embedding::embed_tools_in_chat_request,
+    response_utils::chat_response_utils,
 };
 use actix_web::{post, web, HttpResponse};
 use log::debug;
@@ -22,7 +22,7 @@ pub async fn openai_chat_completion(
     req: web::Json<OpenAiChatRequest>,
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, CustomError> {
-    let openai_request = req.into_inner();
+    let mut openai_request = req.into_inner();
 
     if data.print_request_raw {
         debug!("\n\n===== Request received (raw): =====");
@@ -32,11 +32,7 @@ pub async fn openai_chat_completion(
         );
     }
 
-    let chat_request = if openai_request.tools.is_some() {
-        embed_tools_in_chat_request(openai_request.clone())?
-    } else {
-        openai_request.to_straico_request()?
-    };
+    let chat_request = openai_request.to_straico_request()?;
 
     if data.print_request_converted {
         debug!("\n\n===== Request converted (new chat): =====");
