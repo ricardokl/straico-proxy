@@ -1,8 +1,7 @@
 use straico_client::{
     StraicoClient,
     endpoints::chat::{
-        ChatClientExt, ChatMessage, ChatRequest, ContentObject, builders::*,
-        response_utils::*,
+        ChatClientExt, ChatMessage, ChatRequest, ContentObject, builders::*, response_utils::*,
     },
 };
 

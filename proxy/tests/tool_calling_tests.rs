@@ -1,6 +1,4 @@
-use straico_proxy::openai_types::{
-    OpenAiChatRequest, OpenAiContent, OpenAiToolChoice
-};
+use straico_proxy::openai_types::{OpenAiChatRequest, OpenAiContent, OpenAiToolChoice};
 
 #[test]
 fn test_parse_example1_request() {
@@ -59,7 +57,10 @@ fn test_parse_example1_request() {
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].tool_type, "function");
     assert_eq!(tools[0].function.name, "get_weather");
-    assert_eq!(tools[0].function.description, Some("Get the current weather for a location".to_string()));
+    assert_eq!(
+        tools[0].function.description,
+        Some("Get the current weather for a location".to_string())
+    );
 
     // Verify tool choice
     assert!(request.tool_choice.is_some());
@@ -136,7 +137,10 @@ fn test_parse_example2_request() {
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].tool_type, "function");
     assert_eq!(tools[0].function.name, "search_gutenberg_books");
-    assert_eq!(tools[0].function.description, Some("Search for books in the Project Gutenberg library".to_string()));
+    assert_eq!(
+        tools[0].function.description,
+        Some("Search for books in the Project Gutenberg library".to_string())
+    );
 
     // Verify message
     let user_msg = &request.messages[0];
@@ -244,12 +248,15 @@ fn test_parse_example2_request_with_tool_results() {
     assert!(assistant_msg.tool_calls.is_some());
     let tool_calls = assistant_msg.tool_calls.as_ref().unwrap();
     assert_eq!(tool_calls.len(), 1);
-    
+
     let tool_call = &tool_calls[0];
     assert_eq!(tool_call.id, "call_abc123");
     assert_eq!(tool_call.tool_type, "function");
     assert_eq!(tool_call.function.name, "search_gutenberg_books");
-    assert_eq!(tool_call.function.arguments, "{\"search_terms\": [\"James\", \"Joyce\"]}");
+    assert_eq!(
+        tool_call.function.arguments,
+        "{\"search_terms\": [\"James\", \"Joyce\"]}"
+    );
 
     // Check third message (tool response)
     let tool_msg = &request.messages[2];
@@ -328,7 +335,10 @@ fn test_tool_call_serialization_roundtrip() {
     // Check that the roundtrip preserved the data
     assert_eq!(request.model, parsed_again.model);
     assert_eq!(request.messages.len(), parsed_again.messages.len());
-    assert_eq!(request.tools.as_ref().map(|t| t.len()), parsed_again.tools.as_ref().map(|t| t.len()));
+    assert_eq!(
+        request.tools.as_ref().map(|t| t.len()),
+        parsed_again.tools.as_ref().map(|t| t.len())
+    );
 }
 
 #[test]
@@ -416,7 +426,7 @@ fn test_content_null_handling() {
             // null content is preserved as null
         }
     }
-    
+
     assert!(msg.tool_calls.is_some());
     let tool_calls = msg.tool_calls.as_ref().unwrap();
     assert_eq!(tool_calls.len(), 1);

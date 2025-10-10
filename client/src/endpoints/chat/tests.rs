@@ -2,11 +2,11 @@
 mod tests {
 
     use crate::{
-        endpoints::chat::{
-            builders::*, response_utils::*, ChatChoice, ChatClientExt, ChatMessage, ChatRequest,
-            ChatResponse, ChatResponseContent, ChatUsage, ContentObject, Message,
-        },
         StraicoClient,
+        endpoints::chat::{
+            ChatChoice, ChatClientExt, ChatMessage, ChatRequest, ChatResponse, ChatResponseContent,
+            ChatUsage, ContentObject, Message, builders::*, response_utils::*,
+        },
     };
 
     #[test]

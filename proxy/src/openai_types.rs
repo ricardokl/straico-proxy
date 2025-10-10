@@ -1,6 +1,10 @@
+use crate::error::CustomError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
+use straico_client::{
+    chat::ToolCallsFormat,
+    endpoints::chat::{ChatMessage, ChatRequest, ContentObject},
+};
 
 /// OpenAI-compatible content format that can be either a string or an array of content objects.
 ///
@@ -201,12 +205,95 @@ impl OpenAiChatMessage {
     }
 }
 
+/// Generates tool XML for embedding in messages.
+fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> String {
+    // Determine format based on model
+    let format = ToolCallsFormat::default();
+
+    let pre_tools = r###"
+# Tools
+
+You may call one or more functions to assist with the user query
+
+You are provided with available function signatures within <tools></tools> XML tags:
+<tools>
+"###;
+
+    let post_tools = format!(
+        "\n</tools>\n# Tool Calls\n\nStart with the opening tag {}. For each tool call, return a json object with function name and arguments within {}{} tags:\n{}{{\"name\": <function-name>{} \"arguments\": <args-json-object>}}{}. close the tool calls section with {}\n",
+        format.tool_calls_begin,
+        format.tool_call_begin,
+        format.tool_call_end,
+        format.tool_call_begin,
+        format.tool_sep,
+        format.tool_call_end,
+        format.tool_calls_end
+    );
+
+    let mut tools_message = String::new();
+    tools_message.push_str(pre_tools);
+    for tool in tools {
+        tools_message.push_str(&serde_json::to_string_pretty(&tool.function).unwrap());
+    }
+    tools_message.push_str(&post_tools);
+
+    tools_message
+}
+
 impl OpenAiChatRequest {
     /// Converts OpenAI chat request to Straico ChatRequest format.
     ///
+    /// This function now handles both regular chat requests and those with tools,
+    /// embedding tool definitions into the user message content as needed.
+    /// System messages are no longer specially handled and are passed through as-is.
+    ///
     /// # Returns
-    /// A ChatRequest with converted message format
-    pub fn to_straico_request(&self) -> Result<ChatRequest, String> {
+    /// A `ChatRequest` with the message format converted for Straico.
+    ///
+    /// # Errors
+    /// Returns a `CustomError` if tool embedding fails (e.g., no user message to embed into).
+    pub fn to_straico_request(&mut self) -> Result<ChatRequest, CustomError> {
+        if let Some(tools) = self.tools.take() {
+            if !tools.is_empty() {
+                for tool in &tools {
+                    if tool.tool_type != "function" {
+                        return Err(CustomError::ToolEmbedding(format!(
+                            "Unsupported tool type: {}",
+                            tool.tool_type
+                        )));
+                    }
+                }
+
+                let tool_xml = generate_tool_xml(&tools, &self.model);
+                let preamble = format!("\n\n{tool_xml}");
+
+                let first_user_message = self
+                    .messages
+                    .iter_mut()
+                    .find(|msg| msg.role == "user")
+                    .ok_or(CustomError::ToolEmbedding(
+                        "No user messages found for tool embedding".to_string(),
+                    ))?;
+
+                let new_content = match &first_user_message.content {
+                    OpenAiContent::String(text) => {
+                        OpenAiContent::String(format!("{preamble}\n\n{text}"))
+                    }
+                    OpenAiContent::Array(objects) => {
+                        let original_text = objects
+                            .iter()
+                            .filter(|obj| obj.content_type == "text")
+                            .map(|obj| obj.text.as_str())
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        OpenAiContent::String(format!("{preamble}\n\n{original_text}"))
+                    }
+                    OpenAiContent::Null => OpenAiContent::String(preamble),
+                };
+                first_user_message.content = new_content;
+            }
+        }
+
         let messages: Vec<ChatMessage> = self
             .messages
             .iter()
@@ -215,7 +302,6 @@ impl OpenAiChatRequest {
 
         let mut builder = ChatRequest::builder().model(&self.model).messages(messages);
 
-        // Handle max_tokens vs max_completion_tokens
         let max_tokens = self.max_tokens.or(self.max_completion_tokens);
         if let Some(tokens) = max_tokens {
             builder = builder.max_tokens(tokens);
