@@ -162,46 +162,33 @@ pub struct OpenAiChatRequest {
 use std::fmt;
 
 impl OpenAiContent {
-    /// Converts OpenAI content format to Straico ContentObject vector.
+    /// Converts OpenAI content into a vector of `OpenAiContentObject`.
+    ///
+    /// This method normalizes the `OpenAiContent` enum into a consistent
+    /// `Vec<OpenAiContentObject>` format.
     ///
     /// # Returns
-    /// A vector of ContentObject representing the same content in Straico format
-    pub fn to_straico_content(&self) -> Vec<ContentObject> {
+    /// A `Vec<OpenAiContentObject>` containing the content.
+    pub fn into_content_objects(self) -> Vec<OpenAiContentObject> {
         match self {
-            OpenAiContent::String(text) => {
-                vec![ContentObject::text(text.clone())]
-            }
-            OpenAiContent::Array(objects) => objects
-                .iter()
-                .map(|obj| ContentObject::new(&obj.content_type, &obj.text))
-                .collect(),
-            OpenAiContent::Null => {
-                vec![] // Empty content array for null
-            }
+            OpenAiContent::String(text) => vec![OpenAiContentObject {
+                content_type: "text".to_string(),
+                text,
+            }],
+            OpenAiContent::Array(objects) => objects,
+            OpenAiContent::Null => vec![],
         }
     }
 }
 
 impl fmt::Display for OpenAiContent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OpenAiContent::String(text) => write!(f, "{text}"),
-            OpenAiContent::Array(objects) => {
-                let text: String = objects.iter().map(|obj| &obj.text).cloned().collect();
-                write!(f, "{text}")
-            }
-            OpenAiContent::Null => write!(f, ""),
-        }
-    }
-}
-
-impl OpenAiChatMessage {
-    /// Converts OpenAI chat message to Straico ChatMessage format.
-    ///
-    /// # Returns
-    /// A ChatMessage with converted content format
-    pub fn to_straico_message(&self) -> ChatMessage {
-        ChatMessage::new(&self.role, self.content.to_straico_content())
+        let text: String = match self {
+            OpenAiContent::String(s) => s.clone(),
+            OpenAiContent::Array(objects) => objects.iter().map(|obj| &obj.text).cloned().collect(),
+            OpenAiContent::Null => "".to_string(),
+        };
+        write!(f, "{text}")
     }
 }
 
@@ -253,11 +240,8 @@ impl OpenAiChatRequest {
     /// # Errors
     /// Returns a `CustomError` if tool embedding fails (e.g., no user message to embed into).
     pub fn to_straico_request(&mut self) -> Result<ChatRequest, CustomError> {
-        let mut messages: Vec<ChatMessage> = self
-            .messages
-            .iter()
-            .map(|msg| msg.to_straico_message())
-            .collect();
+        let mut messages: Vec<ChatMessage> =
+            self.messages.drain(..).map(|msg| msg.into()).collect();
 
         if let Some(tools) = self.tools.take() {
             if !tools.is_empty() {
@@ -299,6 +283,12 @@ impl From<OpenAiContentObject> for ContentObject {
 
 impl From<OpenAiChatMessage> for ChatMessage {
     fn from(msg: OpenAiChatMessage) -> Self {
-        msg.to_straico_message()
+        let content_objects = msg
+            .content
+            .into_content_objects()
+            .into_iter()
+            .map(|obj| obj.into())
+            .collect();
+        ChatMessage::new(msg.role, content_objects)
     }
 }

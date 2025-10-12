@@ -1,6 +1,5 @@
 pub mod cli;
 pub mod config;
-pub mod content_conversion;
 pub mod error;
 pub mod openai_types;
 pub mod response_utils;
