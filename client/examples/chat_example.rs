@@ -1,7 +1,7 @@
 use straico_client::{
     StraicoClient,
     endpoints::chat::{
-        ChatClientExt, ChatMessage, ChatRequest, ContentObject, builders::*, response_utils::*,
+        ChatMessage, ChatRequest, ContentObject,
     },
 };
 
@@ -15,38 +15,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("1. Simple Chat Request:");
     let simple_request =
-        simple_chat_request("gpt-3.5-turbo", "Hello! Can you explain what Rust is?");
+    ChatRequest::builder()
+    .model("gpt-3.5-turbo")
+    .message(ChatMessage::user("Hello! Can you explain what Rust is?"))
+    .build();
 
     let response = client
         .clone()
-        .chat_completions()
+        .chat()
         .bearer_auth(&api_key)
         .json(simple_request)
         .send()
         .await?;
 
     let chat_response = response.get_chat_response()?;
-    if let Some(content) = get_first_content(&chat_response) {
+    if let Some(content) = chat_response.first_content() {
         println!("Response: {content}\n");
     }
 
     println!("2. System + User Message:");
-    let system_user_request = system_user_chat_request(
-        "gpt-3.5-turbo",
-        "You are a helpful programming tutor. Explain concepts clearly and provide examples.",
-        "What are the main benefits of Rust's ownership system?",
-    );
+    let system_user_request = ChatRequest::builder()
+    .model("gpt-3.5-turbo")
+    .message(ChatMessage::system("You are a helpful programming tutor. Explain concepts clearly and provide examples."))
+    .message(ChatMessage::user("What are the main benefits of Rust's ownership system?"))
+    .build();
 
     let response = client
         .clone()
-        .chat_completions()
+        .chat()
         .bearer_auth(&api_key)
         .json(system_user_request)
         .send()
         .await?;
 
     let chat_response = response.get_chat_response()?;
-    if let Some(content) = get_first_content(&chat_response) {
+    if let Some(content) = chat_response.first_content() {
         println!("Response: {content}\n");
     }
 
@@ -58,18 +61,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ChatMessage::user("What's the population of that city?"),
     ];
 
-    let conversation_request = conversation_chat_request("gpt-3.5-turbo", conversation_messages);
+    let conversation_request = ChatRequest::builder()
+    .model("gpt-3.5-turbo")
+    .messages(conversation_messages)
+    .build();
 
     let response = client
         .clone()
-        .chat_completions()
+        .chat()
         .bearer_auth(&api_key)
         .json(conversation_request)
         .send()
         .await?;
 
     let chat_response = response.get_chat_response()?;
-    if let Some(content) = get_first_content(&chat_response) {
+    if let Some(content) = chat_response.first_content() {
         println!("Response: {content}\n");
     }
 
@@ -80,18 +86,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let advanced_request =
-        advanced_chat_request("gpt-3.5-turbo", advanced_messages, Some(0.8), Some(150));
+    ChatRequest::builder()
+    .model("gpt-3.5-turbo")
+    .messages(advanced_messages)
+    .temperature(0.8)
+    .max_tokens(150)
+    .build();
 
     let response = client
         .clone()
-        .chat_completions()
+        .chat()
         .bearer_auth(&api_key)
         .json(advanced_request)
         .send()
         .await?;
 
     let chat_response = response.get_chat_response()?;
-    if let Some(content) = get_first_content(&chat_response) {
+    if let Some(content) = chat_response.first_content() {
         println!("Response: {content}\n");
     }
 
@@ -108,7 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let response = client
         .clone()
-        .chat_completions()
+        .chat()
         .bearer_auth(&api_key)
         .json(builder_request)
         .send()
@@ -119,16 +130,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Response analysis:");
     println!(
         "- Content: {}",
-        get_first_content(&chat_response).unwrap_or("No content".to_string())
+        chat_response.first_content().unwrap_or("No content".to_string())
     );
     println!(
         "- Finish reason: {}",
-        get_finish_reason(&chat_response).unwrap_or("Unknown")
+        chat_response.first_choice().map(|c| c.finish_reason.as_str()).unwrap_or("Unknown")
     );
-    println!("- Was truncated: {}", was_truncated(&chat_response));
-    println!("- Has tool calls: {}", has_tool_calls(&chat_response));
+    println!("- Was truncated: {}", chat_response.first_choice().map(|c| c.finish_reason == "length").unwrap_or(false));
+    println!("- Has tool calls: {}", chat_response.has_tool_calls());
 
-    if let Some(usage) = get_usage(&chat_response) {
+    if let Some(usage) = &chat_response.usage {
         println!(
             "- Token usage: {} prompt + {} completion = {} total",
             usage.prompt_tokens, usage.completion_tokens, usage.total_tokens
@@ -151,14 +162,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .build();
 
     let response = client
-        .chat_completions()
+        .chat()
         .bearer_auth(&api_key)
         .json(structured_request)
         .send()
         .await?;
 
     let chat_response = response.get_chat_response()?;
-    if let Some(content) = get_first_content(&chat_response) {
+    if let Some(content) = chat_response.first_content() {
         println!("Analysis: {content}\n");
     }
 
