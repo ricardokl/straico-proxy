@@ -253,6 +253,12 @@ impl OpenAiChatRequest {
     /// # Errors
     /// Returns a `CustomError` if tool embedding fails (e.g., no user message to embed into).
     pub fn to_straico_request(&mut self) -> Result<ChatRequest, CustomError> {
+        let mut messages: Vec<ChatMessage> = self
+            .messages
+            .iter()
+            .map(|msg| msg.to_straico_message())
+            .collect();
+
         if let Some(tools) = self.tools.take() {
             if !tools.is_empty() {
                 for tool in &tools {
@@ -265,40 +271,10 @@ impl OpenAiChatRequest {
                 }
 
                 let tool_xml = generate_tool_xml(&tools, &self.model);
-                let preamble = format!("\n\n{tool_xml}");
-
-                let first_user_message = self
-                    .messages
-                    .iter_mut()
-                    .find(|msg| msg.role == "user")
-                    .ok_or(CustomError::ToolEmbedding(
-                        "No user messages found for tool embedding".to_string(),
-                    ))?;
-
-                let new_content = match &first_user_message.content {
-                    OpenAiContent::String(text) => {
-                        OpenAiContent::String(format!("{preamble}\n\n{text}"))
-                    }
-                    OpenAiContent::Array(objects) => {
-                        let original_text = objects
-                            .iter()
-                            .filter(|obj| obj.content_type == "text")
-                            .map(|obj| obj.text.as_str())
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        OpenAiContent::String(format!("{preamble}\n\n{original_text}"))
-                    }
-                    OpenAiContent::Null => OpenAiContent::String(preamble),
-                };
-                first_user_message.content = new_content;
+                let system_message = ChatMessage::system(tool_xml);
+                messages.insert(0, system_message);
             }
         }
-
-        let messages: Vec<ChatMessage> = self
-            .messages
-            .iter()
-            .map(|msg| msg.to_straico_message())
-            .collect();
 
         let mut builder = ChatRequest::builder().model(&self.model).messages(messages);
 
