@@ -172,7 +172,6 @@ impl ChatMessage {
         }
     }
 
-
     /// Creates a system message with text content.
     ///
     /// # Arguments

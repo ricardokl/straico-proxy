@@ -5,18 +5,18 @@ use actix_web::{
 };
 use serde_json::json;
 use straico_client::client::StraicoClient;
-use straico_proxy::{config::ProxyConfig, server, server::AppState};
+use straico_proxy::{server, server::AppState};
 
 /// Creates a test AppState for integration tests
 fn create_test_app_state() -> AppState {
     AppState {
         client: StraicoClient::new(),
         key: "test-api-key".to_string(),
-        config: ProxyConfig::default(),
         print_request_raw: false,
         print_request_converted: false,
         print_response_raw: false,
         print_response_converted: false,
+        include_debug_info: false,
     }
 }
 

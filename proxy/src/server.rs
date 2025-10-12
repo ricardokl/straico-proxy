@@ -1,6 +1,5 @@
 use crate::{
-    config::ProxyConfig, error::CustomError, openai_types::OpenAiChatRequest,
-    response_utils::chat_response_utils,
+    error::CustomError, openai_types::OpenAiChatRequest, response_utils::chat_response_utils,
 };
 use actix_web::{post, web, HttpResponse};
 use log::debug;
@@ -10,11 +9,11 @@ use straico_client::client::StraicoClient;
 pub struct AppState {
     pub client: StraicoClient,
     pub key: String,
-    pub config: ProxyConfig,
     pub print_request_raw: bool,
     pub print_request_converted: bool,
     pub print_response_raw: bool,
     pub print_response_converted: bool,
+    pub include_debug_info: bool,
 }
 
 #[post("/v1/chat/completions")]
@@ -51,7 +50,7 @@ pub async fn openai_chat_completion(
     let enhanced_response = chat_response_utils::enhance_chat_response(
         chat_response,
         &openai_request,
-        data.config.include_debug_info,
+        data.include_debug_info,
     );
 
     if data.print_response_converted {

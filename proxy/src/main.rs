@@ -4,7 +4,7 @@ use clap::Parser;
 use flexi_logger::{FileSpec, Logger, WriteMode};
 use log::{error, info};
 use straico_client::client::StraicoClient;
-use straico_proxy::{cli::Cli, config::ProxyConfig, server};
+use straico_proxy::{cli::Cli, server};
 
 #[actix_web::main]
 async fn main() -> anyhow::Result<()> {
@@ -65,21 +65,15 @@ async fn main() -> anyhow::Result<()> {
         info!("Including debug info in responses");
     }
 
-    // Create ProxyConfig from CLI arguments
-    let proxy_config = ProxyConfig {
-        enable_chat_streaming: false, // Streaming is not implemented
-        include_debug_info: cli.include_debug_info,
-    };
-
     HttpServer::new(move || {
         let app_state = server::AppState {
             client: StraicoClient::new(),
             key: api_key.clone(),
-            config: proxy_config.clone(),
             print_request_raw: cli.print_request_raw,
             print_request_converted: cli.print_request_converted,
             print_response_raw: cli.print_response_raw,
             print_response_converted: cli.print_response_converted,
+            include_debug_info: cli.include_debug_info,
         };
 
         App::new()
