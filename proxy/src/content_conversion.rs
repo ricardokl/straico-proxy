@@ -28,32 +28,6 @@ pub fn normalize_openai_content_to_array(content: OpenAiContent) -> Vec<OpenAiCo
     }
 }
 
-/// Splits large content into smaller chunks for processing.
-///
-/// # Arguments
-/// * `content` - The content to split
-/// * `max_length` - Maximum length per chunk
-///
-/// # Returns
-/// Vector of content chunks
-pub fn split_content_into_chunks(content: &str, max_length: usize) -> Vec<ContentObject> {
-    if content.len() <= max_length {
-        return vec![ContentObject::text(content)];
-    }
-
-    let mut chunks = Vec::new();
-    let mut start = 0;
-
-    while start < content.len() {
-        let end = std::cmp::min(start + max_length, content.len());
-        let chunk = &content[start..end];
-        chunks.push(ContentObject::text(chunk));
-        start = end;
-    }
-
-    chunks
-}
-
 /// Extracts text content from any content format.
 ///
 /// # Arguments
