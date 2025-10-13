@@ -59,7 +59,6 @@ async fn main() -> anyhow::Result<()> {
             client: StraicoClient::new(),
             key: api_key.clone(),
             debug: cli.debug,
-            debug_deserialization: cli.debug_deserialization,
             log: cli.log,
         };
 
