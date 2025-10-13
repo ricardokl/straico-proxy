@@ -2,18 +2,15 @@ use crate::{
     error::CustomError, openai_types::OpenAiChatRequest, response_utils::chat_response_utils,
 };
 use actix_web::{post, web, HttpResponse};
-use log::debug;
+use log::{debug, info};
 use straico_client::client::StraicoClient;
 
 #[derive(Clone)]
 pub struct AppState {
     pub client: StraicoClient,
     pub key: String,
-    pub print_request_raw: bool,
-    pub print_request_converted: bool,
-    pub print_response_raw: bool,
-    pub print_response_converted: bool,
-    pub include_debug_info: bool,
+    pub debug: bool,
+    pub log: bool,
 }
 
 #[post("/v1/chat/completions")]
@@ -23,43 +20,45 @@ pub async fn openai_chat_completion(
 ) -> Result<HttpResponse, CustomError> {
     let mut openai_request = req.into_inner();
 
-    if data.print_request_raw {
-        debug!("\n\n===== Request received (raw): =====");
-        debug!(
-            "\n{}",
-            serde_json::to_string_pretty(&openai_request).unwrap()
-        );
+    if data.debug || data.log {
+        let request_json = serde_json::to_string_pretty(&openai_request).unwrap();
+        if data.debug {
+            debug!("\n\n===== Request received (raw): =====\n{request_json}");
+        }
+        if data.log {
+            info!("\n\n===== Request received (raw): =====\n{request_json}");
+        }
     }
 
     let chat_request = openai_request.to_straico_request()?;
 
-    if data.print_request_converted {
-        debug!("\n\n===== Request converted (new chat): =====");
-        debug!("\n{}", serde_json::to_string_pretty(&chat_request).unwrap());
-    }
-
     let client = data.client.clone();
-    let chat_response = client
+    let straico_response = client
         .chat()
         .bearer_auth(&data.key)
         .json(chat_request.clone())
         .send()
-        .await?
-        .get_chat_response()?;
+        .await?;
 
-    let enhanced_response = chat_response_utils::enhance_chat_response(
-        chat_response,
-        &openai_request,
-        data.include_debug_info,
-    );
+    let response_bytes = straico_response.bytes().await?;
 
-    if data.print_response_converted {
-        debug!("\n\n===== Response converted: =====");
-        debug!(
-            "\n{}",
-            serde_json::to_string_pretty(&enhanced_response).unwrap()
-        );
+    if data.debug || data.log {
+        let response_json = serde_json::from_slice::<serde_json::Value>(&response_bytes)
+            .and_then(|json| serde_json::to_string_pretty(&json))
+            .unwrap_or_else(|_| String::from_utf8_lossy(&response_bytes).to_string());
+
+        if data.debug {
+            debug!("\n\n===== Response from Straico (raw): =====\n{response_json}");
+        }
+        if data.log {
+            info!("\n\n===== Response from Straico (raw): =====\n{response_json}");
+        }
     }
+
+    let chat_response = serde_json::from_slice(&response_bytes)?;
+
+    let enhanced_response =
+        chat_response_utils::enhance_chat_response(chat_response, &openai_request, false);
 
     Ok(HttpResponse::Ok().json(enhanced_response))
 }
