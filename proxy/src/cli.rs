@@ -23,10 +23,6 @@ pub struct Cli {
     #[arg(long)]
     pub debug: bool,
 
-    /// Try to deserialize the response from Straico and print the error if it fails.
-    #[arg(long)]
-    pub debug_deserialization: bool,
-
     /// Log the raw request and response JSON to a file.
     #[arg(long)]
     pub log: bool,

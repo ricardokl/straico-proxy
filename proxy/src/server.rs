@@ -8,7 +8,6 @@ pub struct AppState {
     pub client: StraicoClient,
     pub key: String,
     pub debug: bool,
-    pub debug_deserialization: bool,
     pub log: bool,
 }
 
@@ -54,19 +53,12 @@ pub async fn openai_chat_completion(
         }
     }
 
-    if data.debug_deserialization {
-        let response_clone = response_bytes.clone();
-        let deserialization_result: Result<
-            straico_client::endpoints::chat::chat_response::ChatResponse,
-            _,
-        > = serde_json::from_slice(&response_clone);
+    let response = serde_json::from_slice::<
+        straico_client::endpoints::chat::chat_response::ChatResponse,
+    >(&response_bytes)
+    .map_err(|e| {
+        CustomError::SerdeJson(e)
+    })?;
 
-        if let Err(e) = deserialization_result {
-            debug!("\n\n===== Deserialization failed =====\n{e:?}");
-        }
-    }
-
-    let response_json: serde_json::Value = serde_json::from_slice(&response_bytes)?;
-
-    Ok(HttpResponse::Ok().json(response_json))
+    Ok(HttpResponse::Ok().json(response))
 }
