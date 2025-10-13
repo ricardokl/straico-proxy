@@ -1,11 +1,9 @@
 #[cfg(test)]
 mod tests {
 
-    use crate::{
-        endpoints::chat::{
-            ChatChoice, ChatMessage, ChatRequest, ChatResponse, ChatResponseContent,
-            ChatUsage, ContentObject, Message,
-        },
+    use crate::endpoints::chat::{
+        ChatChoice, ChatMessage, ChatRequest, ChatResponse, ChatResponseContent, ChatUsage,
+        ContentObject, Message,
     };
 
     #[test]

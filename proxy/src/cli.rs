@@ -19,30 +19,13 @@ pub struct Cli {
     #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
     pub api_key: Option<String>,
 
-    /// Log to file (proxy.log)
+    /// Print the raw request and response JSON to the console.
     #[arg(long)]
-    pub log_to_file: bool,
+    pub debug: bool,
 
-    /// Log to standard output
+    /// Log the raw request and response JSON to a file.
     #[arg(long)]
-    pub log_to_stdout: bool,
-
-    /// Print the raw request
-    #[arg(long)]
-    pub print_request_raw: bool,
-    /// Print the request after converting to Straico format
-    #[arg(long)]
-    pub print_request_converted: bool,
-    /// Print the raw response from Straico
-    #[arg(long)]
-    pub print_response_raw: bool,
-    /// Print the response after converting to OpenAI format
-    #[arg(long)]
-    pub print_response_converted: bool,
-
-    /// Include debug information in responses
-    #[arg(long)]
-    pub include_debug_info: bool,
+    pub log: bool,
 
     /// Set log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]

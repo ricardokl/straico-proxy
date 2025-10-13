@@ -2,10 +2,7 @@ use reqwest::{Client, RequestBuilder};
 use serde::Serialize;
 use std::{fmt::Display, marker::PhantomData};
 
-use crate::{
-    endpoints::{ApiResponseData, chat::chat_request::ChatRequest},
-    error::StraicoError,
-};
+use crate::endpoints::chat::chat_request::ChatRequest;
 
 /// Represents the state where no API key has been set for the request
 pub struct NoApiKey;
@@ -98,21 +95,18 @@ impl<K, T: Serialize> StraicoRequestBuilder<K, T> {
 }
 
 impl StraicoRequestBuilder<ApiKeySet, PayloadSet> {
-    /// Sends the configured request to the API and deserializes the JSON response
+    /// Sends the configured request to the API and returns the raw response
     ///
     /// This method will send the HTTP request that has been configured with authentication
-    /// and payload (if applicable), then attempt to parse the response as JSON into
-    /// the expected response type.
+    /// and payload (if applicable).
     ///
     /// # Returns
     ///
     /// A Future that resolves to a Result containing either:
-    /// - The deserialized API response data of type `ApiResponseData<V>`
-    /// - A reqwest error if the request fails or JSON parsing fails
-    pub async fn send(self) -> Result<ApiResponseData, StraicoError> {
-        let response = self.0.send().await?;
-        let json = response.json().await?;
-        Ok(json)
+    /// - The raw `reqwest::Response`
+    /// - A reqwest error if the request fails
+    pub async fn send(self) -> Result<reqwest::Response, reqwest::Error> {
+        self.0.send().await
     }
 }
 
