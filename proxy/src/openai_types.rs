@@ -2,7 +2,6 @@ use crate::error::CustomError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use straico_client::{
-    chat::ToolCallsFormat,
     endpoints::chat::{ChatMessage, ChatRequest, ContentObject},
 };
 
@@ -194,9 +193,6 @@ impl fmt::Display for OpenAiContent {
 
 /// Generates tool XML for embedding in messages.
 fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> String {
-    // Determine format based on model
-    let format = ToolCallsFormat::default();
-
     let pre_tools = r###"
 # Tools
 
@@ -206,23 +202,14 @@ You are provided with available function signatures within <tools></tools> XML t
 <tools>
 "###;
 
-    let post_tools = format!(
-        "\n</tools>\n# Tool Calls\n\nStart with the opening tag {}. For each tool call, return a json object with function name and arguments within {}{} tags:\n{}{{\"name\": <function-name>{} \"arguments\": <args-json-object>}}{}. close the tool calls section with {}\n",
-        format.tool_calls_begin,
-        format.tool_call_begin,
-        format.tool_call_end,
-        format.tool_call_begin,
-        format.tool_sep,
-        format.tool_call_end,
-        format.tool_calls_end
-    );
+    let post_tools = "\n</tools>\n# Tool Calls\n\nStart with the opening tag <tool_calls>. For each tool call, return a json object with function name and arguments within <tool_call></tool_call> tags:\n<tool_call>{\"name\": <function-name>, \"arguments\": <args-json-object>}</tool_call>. close the tool calls section with </tool_calls>\n";
 
     let mut tools_message = String::new();
     tools_message.push_str(pre_tools);
     for tool in tools {
         tools_message.push_str(&serde_json::to_string_pretty(&tool.function).unwrap());
     }
-    tools_message.push_str(&post_tools);
+    tools_message.push_str(post_tools);
 
     tools_message
 }
