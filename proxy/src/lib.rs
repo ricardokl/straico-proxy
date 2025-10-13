@@ -1,7 +1,6 @@
 pub mod cli;
 pub mod error;
 pub mod openai_types;
-pub mod response_utils;
 pub mod server;
 pub mod streaming;
 

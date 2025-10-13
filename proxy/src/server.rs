@@ -1,6 +1,4 @@
-use crate::{
-    error::CustomError, openai_types::OpenAiChatRequest, response_utils::chat_response_utils,
-};
+use crate::{error::CustomError, openai_types::OpenAiChatRequest};
 use actix_web::{post, web, HttpResponse};
 use log::{debug, info};
 use straico_client::client::StraicoClient;
@@ -55,10 +53,7 @@ pub async fn openai_chat_completion(
         }
     }
 
-    let chat_response = serde_json::from_slice(&response_bytes)?;
+    let response_json: serde_json::Value = serde_json::from_slice(&response_bytes)?;
 
-    let enhanced_response =
-        chat_response_utils::enhance_chat_response(chat_response, &openai_request, false);
-
-    Ok(HttpResponse::Ok().json(enhanced_response))
+    Ok(HttpResponse::Ok().json(response_json))
 }
