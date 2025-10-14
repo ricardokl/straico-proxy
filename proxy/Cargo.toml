@@ -10,6 +10,8 @@ derive = "1.0.0"
 flexi_logger = "0.28.0"
 futures = "0.3.31"
 log = "0.4.22"
+bytes = "1.6.1"
+futures-util = "0.3.31"
 serde = { version = "1.0.218", features = ["derive"] }
 serde_json = "1.0.140"
 straico-client = { path = "../client" }
@@ -25,3 +27,4 @@ either = "1.13.0"
 straico-proxy = { path = "." }
 actix-http = "3"
 actix-rt = "2"
+wiremock = "0.6.1"

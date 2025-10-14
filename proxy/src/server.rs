@@ -1,5 +1,9 @@
-use crate::{error::CustomError, openai_types::OpenAiChatRequest};
+use crate::{
+    error::CustomError, openai_types::OpenAiChatRequest, streaming::CompletionStream,
+};
 use actix_web::{post, web, HttpResponse};
+use bytes::Bytes;
+use futures_util::stream::{self, StreamExt};
 use log::{debug, info};
 use straico_client::client::StraicoClient;
 
@@ -53,12 +57,135 @@ pub async fn openai_chat_completion(
         }
     }
 
-    let response = serde_json::from_slice::<
-        straico_client::endpoints::chat::chat_response::ChatResponse,
-    >(&response_bytes)
-    .map_err(|e| {
-        CustomError::SerdeJson(e)
-    })?;
+    let response =
+        serde_json::from_slice::<straico_client::endpoints::chat::chat_response::ChatResponse>(
+            &response_bytes,
+        )
+        .map_err(|e| CustomError::SerdeJson(e))?;
 
-    Ok(HttpResponse::Ok().json(response))
+    if openai_request.stream {
+        let stream_iterator = CompletionStream::from(response).into_iter();
+        let stream = stream::iter(stream_iterator)
+            .map(|chunk| {
+                let json = serde_json::to_string(&chunk).unwrap();
+                Ok::<_, CustomError>(Bytes::from(format!("data: {json}\n\n")))
+            })
+            .chain(stream::once(async {
+                Ok(Bytes::from("data: [DONE]\n\n"))
+            }));
+
+        Ok(HttpResponse::Ok()
+            .content_type("text/event-stream")
+            .streaming(stream))
+    } else {
+        Ok(HttpResponse::Ok().json(response))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::openai_types::{OpenAiChatMessage, OpenAiContent};
+    use actix_web::{test, web, App};
+    use straico_client::endpoints::chat::chat_response::{
+        ChatChoice, ChatResponse, ChatResponseContent, Message,
+    };
+    use wiremock::{
+        matchers::{method, path},
+        Mock, MockServer, ResponseTemplate,
+    };
+
+    #[actix_rt::test]
+    async fn test_openai_chat_completion_streaming() {
+        // Arrange
+        let server = MockServer::start().await;
+        let mock_response = ChatResponse {
+            id: Some("chatcmpl-123".to_string()),
+            object: Some("chat.completion".to_string()),
+            created: Some(1677652288),
+            model: "gpt-3.5-turbo-0125".to_string(),
+            choices: vec![ChatChoice {
+                index: Some(0),
+                message: Message {
+                    role: "assistant".to_string(),
+                    content: Some(ChatResponseContent::Text("Hello there!".to_string())),
+                    tool_calls: None,
+                },
+                finish_reason: "stop".to_string(),
+            }],
+            usage: None,
+            tools: None,
+            tool_choice: None,
+        };
+        Mock::given(method("POST"))
+            .and(path("/v0/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&mock_response))
+            .mount(&server)
+            .await;
+
+        let client = StraicoClient::with_base_url(server.uri());
+
+        let app_state = web::Data::new(AppState {
+            client,
+            key: "test_key".to_string(),
+            debug: false,
+            log: false,
+        });
+
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .service(openai_chat_completion),
+        )
+        .await;
+        let req_payload = OpenAiChatRequest {
+            model: "gpt-3.5-turbo".to_string(),
+            messages: vec![OpenAiChatMessage {
+                role: "user".to_string(),
+                content: OpenAiContent::String("Hello".to_string()),
+                tool_call_id: None,
+                name: None,
+                tool_calls: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            max_completion_tokens: None,
+            stream: true,
+            tools: None,
+            tool_choice: None,
+        };
+        let req = test::TestRequest::post()
+            .uri("/v1/chat/completions")
+            .set_json(&req_payload)
+            .to_request();
+
+        // Act
+        let resp = test::call_service(&app, req).await;
+
+        // Assert
+        assert!(resp.status().is_success());
+        let body = test::read_body(resp).await;
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        let mut lines = body_str.lines().filter(|&l| !l.is_empty());
+
+        let first_line = lines.next().unwrap();
+        assert!(first_line.starts_with("data: "));
+        let first_chunk_json: serde_json::Value =
+            serde_json::from_str(&first_line["data: ".len()..]).unwrap();
+        assert_eq!(
+            first_chunk_json["choices"][0]["delta"]["role"], "assistant"
+        );
+        assert!(first_chunk_json["choices"][0]["delta"]["content"].is_null());
+
+        let second_line = lines.next().unwrap();
+        assert!(second_line.starts_with("data: "));
+        let second_chunk_json: serde_json::Value =
+            serde_json::from_str(&second_line["data: ".len()..]).unwrap();
+        assert!(second_chunk_json["choices"][0]["delta"]["role"].is_null());
+        assert_eq!(
+            second_chunk_json["choices"][0]["delta"]["content"], "Hello there!"
+        );
+
+        assert_eq!(lines.next().unwrap(), "data: [DONE]");
+    }
 }
