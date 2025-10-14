@@ -27,7 +27,10 @@ pub struct StraicoRequestBuilder<Api, Payload>(
 
 impl From<Client> for StraicoClient {
     fn from(value: Client) -> Self {
-        StraicoClient(value)
+        Self {
+            client: value,
+            base_url: None,
+        }
     }
 }
 
@@ -36,8 +39,20 @@ impl From<Client> for StraicoClient {
 /// Wraps a reqwest::Client and provides convenient methods for making API requests.
 /// Can be created using `StraicoClient::new()` or by converting a reqwest::Client
 /// using `Into<StraicoClient>`.
-#[derive(Clone, Default)]
-pub struct StraicoClient(Client);
+#[derive(Clone)]
+pub struct StraicoClient {
+    client: Client,
+    base_url: Option<String>,
+}
+
+impl Default for StraicoClient {
+    fn default() -> Self {
+        Self {
+            client: Client::new(),
+            base_url: None,
+        }
+    }
+}
 
 impl StraicoClient {
     /// Creates a new instance of StraicoClient with default configuration
@@ -52,15 +67,24 @@ impl StraicoClient {
         StraicoClient::default()
     }
 
+    pub fn with_base_url(base_url: String) -> Self {
+        Self {
+            client: Client::new(),
+            base_url: Some(base_url),
+        }
+    }
+
     /// Creates a request builder for the new chat endpoint
     ///
     /// # Returns
     ///
     /// A `StraicoRequestBuilder` configured for making chat completion requests
     pub fn chat(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest> {
-        self.0
-            .post("https://api.straico.com/v0/chat/completions")
-            .into()
+        let url = self
+            .base_url
+            .unwrap_or_else(|| "https://api.straico.com".to_string())
+            + "/v0/chat/completions";
+        self.client.post(&url).into()
     }
 }
 
