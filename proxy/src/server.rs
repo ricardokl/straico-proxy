@@ -291,4 +291,97 @@ mod tests {
             "</tool_calls>"
         );
     }
+
+    #[actix_rt::test]
+    async fn test_openai_chat_completion_with_tool_role() {
+        // Arrange
+        let server = MockServer::start().await;
+        let mock_response = ChatResponse {
+            id: Some("chatcmpl-123".to_string()),
+            object: Some("chat.completion".to_string()),
+            created: Some(1677652288),
+            model: "gpt-3.5-turbo-0125".to_string(),
+            choices: vec![ChatChoice {
+                index: Some(0),
+                message: Message {
+                    role: "assistant".to_string(),
+                    content: Some(ChatResponseContent::Text("Hello there!".to_string())),
+                    tool_calls: None,
+                },
+                finish_reason: "stop".to_string(),
+            }],
+            usage: None,
+            tools: None,
+            tool_choice: None,
+        };
+        Mock::given(method("POST"))
+            .and(path("/v0/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&mock_response))
+            .mount(&server)
+            .await;
+
+        let client = StraicoClient::with_base_url(server.uri());
+
+        let app_state = web::Data::new(AppState {
+            client,
+            key: "test_key".to_string(),
+            debug: false,
+            log: false,
+        });
+
+        let app = test::init_service(
+            App::new()
+                .app_data(app_state.clone())
+                .service(openai_chat_completion),
+        )
+        .await;
+        let req_payload = OpenAiChatRequest {
+            model: "gpt-3.5-turbo".to_string(),
+            messages: vec![OpenAiChatMessage {
+                role: "tool".to_string(),
+                content: OpenAiContent::String("{\"result\": \"success\"}".to_string()),
+                tool_call_id: Some("call_123".to_string()),
+                name: None,
+                tool_calls: None,
+            }],
+            temperature: None,
+            max_tokens: None,
+            max_completion_tokens: None,
+            stream: false,
+            tools: None,
+            tool_choice: None,
+        };
+        let req = test::TestRequest::post()
+            .uri("/v1/chat/completions")
+            .set_json(&req_payload)
+            .to_request();
+
+        // Act
+        let resp = test::call_service(&app, req).await;
+
+        // Assert
+        assert!(resp.status().is_success());
+        let received_requests = server.received_requests().await.unwrap();
+        let received_request = received_requests.get(0).unwrap();
+        let received_body: serde_json::Value =
+            serde_json::from_slice(&received_request.body).unwrap();
+
+        assert_eq!(received_body["messages"][0]["role"], "user");
+        let expected_json = serde_json::json!({
+            "tool_call_id": "call_123",
+            "output": "{\"result\": \"success\"}"
+        });
+
+        let actual_content_str = received_body["messages"][0]["content"][0]["text"]
+            .as_str()
+            .unwrap();
+        let actual_json_str = actual_content_str
+            .strip_prefix("<tool_output>")
+            .unwrap()
+            .strip_suffix("</tool_output>")
+            .unwrap();
+        let actual_json: serde_json::Value = serde_json::from_str(actual_json_str).unwrap();
+
+        assert_eq!(actual_json, expected_json);
+    }
 }

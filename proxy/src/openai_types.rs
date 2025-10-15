@@ -266,8 +266,26 @@ impl From<OpenAiContentObject> for ContentObject {
     }
 }
 
+// A new struct for serializing tool output
+#[derive(Serialize)]
+struct ToolOutput {
+    tool_call_id: String,
+    output: String,
+}
+
 impl From<OpenAiChatMessage> for ChatMessage {
     fn from(msg: OpenAiChatMessage) -> Self {
+        if msg.role == "tool" {
+            let tool_output = ToolOutput {
+                tool_call_id: msg.tool_call_id.unwrap_or_default(),
+                output: msg.content.to_string(),
+            };
+            let json_output = serde_json::to_string(&tool_output).unwrap_or_default();
+            let new_content = format!("<tool_output>{}</tool_output>", json_output);
+
+            return ChatMessage::new("user".to_string(), vec![ContentObject::text(new_content)]);
+        }
+
         let mut content_objects: Vec<ContentObject> = msg
             .content
             .into_content_objects()
