@@ -1,9 +1,7 @@
 use crate::error::CustomError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use straico_client::{
-    endpoints::chat::{ChatMessage, ChatRequest, ContentObject},
-};
+use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
 
 /// OpenAI-compatible content format that can be either a string or an array of content objects.
 ///
@@ -277,6 +275,8 @@ impl From<OpenAiChatMessage> for ChatMessage {
             .map(|obj| obj.into())
             .collect();
 
+        // TODO: This is ok for now, first test if it works, otherwise
+        // break each individual tool call into its own message
         if let Some(tool_calls) = msg.tool_calls {
             if !tool_calls.is_empty() {
                 content_objects.push(ContentObject::text("<tool_calls>"));
