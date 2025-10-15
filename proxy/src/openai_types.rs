@@ -270,12 +270,22 @@ impl From<OpenAiContentObject> for ContentObject {
 
 impl From<OpenAiChatMessage> for ChatMessage {
     fn from(msg: OpenAiChatMessage) -> Self {
-        let content_objects = msg
+        let mut content_objects: Vec<ContentObject> = msg
             .content
             .into_content_objects()
             .into_iter()
             .map(|obj| obj.into())
             .collect();
+
+        if let Some(tool_calls) = msg.tool_calls {
+            if !tool_calls.is_empty() {
+                content_objects.push(ContentObject::text("<tool_calls>"));
+                let tool_calls_str = serde_json::to_string(&tool_calls).unwrap_or_default();
+                content_objects.push(ContentObject::text(tool_calls_str));
+                content_objects.push(ContentObject::text("</tool_calls>"));
+            }
+        }
+
         ChatMessage::new(msg.role, content_objects)
     }
 }
