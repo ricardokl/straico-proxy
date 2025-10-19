@@ -8,7 +8,8 @@ use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
 /// This enum handles the dual content format support required by the OpenAI API:
 /// - String format: `"content": "Hello world"`
 /// - Array format: `"content": [{"type": "text", "text": "Hello world"}]`
-/// - Null format: `"content": null` (used when there's no content but other fields like tool_calls exist)
+/// 
+/// Note: Null content is represented by wrapping this enum in an `Option`.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 #[serde(untagged)]
 pub enum OpenAiContent {
@@ -16,8 +17,6 @@ pub enum OpenAiContent {
     String(String),
     /// Array of structured content objects
     Array(Vec<OpenAiContentObject>),
-    /// Null content (empty content)
-    Null,
 }
 
 /// Represents a single content object in the OpenAI array format.
@@ -73,14 +72,7 @@ pub struct OpenAiNamedToolChoice {
     #[serde(rename = "type")]
     pub tool_type: String,
     /// The specific function to use
-    pub function: OpenAiFunctionName,
-}
-
-/// Represents a function name for tool choice.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct OpenAiFunctionName {
-    /// The name of the function
-    pub name: String,
+    pub function: OpenAiFunction,
 }
 
 /// Represents a function call within a tool call.
@@ -112,8 +104,8 @@ pub struct OpenAiToolCall {
 pub struct OpenAiChatMessage {
     /// The role of the message sender (system, user, assistant, tool)
     pub role: String,
-    /// The message content in either string or array format
-    pub content: OpenAiContent,
+    /// The message content in either string or array format, or None for null content
+    pub content: Option<OpenAiContent>,
     /// Optional tool call ID for tool messages
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
@@ -173,7 +165,6 @@ impl OpenAiContent {
                 text,
             }],
             OpenAiContent::Array(objects) => objects,
-            OpenAiContent::Null => vec![],
         }
     }
 }
@@ -183,7 +174,6 @@ impl fmt::Display for OpenAiContent {
         let text: String = match self {
             OpenAiContent::String(s) => s.clone(),
             OpenAiContent::Array(objects) => objects.iter().map(|obj| &obj.text).cloned().collect(),
-            OpenAiContent::Null => "".to_string(),
         };
         write!(f, "{text}")
     }
@@ -278,7 +268,7 @@ impl From<OpenAiChatMessage> for ChatMessage {
         if msg.role == "tool" {
             let tool_output = ToolOutput {
                 tool_call_id: msg.tool_call_id.unwrap_or_default(),
-                output: msg.content.to_string(),
+                output: msg.content.as_ref().map(|c| c.to_string()).unwrap_or_default(),
             };
             let json_output = serde_json::to_string(&tool_output).unwrap_or_default();
             let new_content = format!("<tool_output>{}</tool_output>", json_output);
@@ -288,7 +278,8 @@ impl From<OpenAiChatMessage> for ChatMessage {
 
         let mut content_objects: Vec<ContentObject> = msg
             .content
-            .into_content_objects()
+            .map(|c| c.into_content_objects())
+            .unwrap_or_default()
             .into_iter()
             .map(|obj| obj.into())
             .collect();

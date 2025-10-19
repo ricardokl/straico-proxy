@@ -144,7 +144,7 @@ mod tests {
             model: "gpt-3.5-turbo".to_string(),
             messages: vec![OpenAiChatMessage {
                 role: "user".to_string(),
-                content: OpenAiContent::String("Hello".to_string()),
+                content: Some(OpenAiContent::String("Hello".to_string())),
                 tool_call_id: None,
                 name: None,
                 tool_calls: None,
@@ -238,7 +238,7 @@ mod tests {
             model: "gpt-3.5-turbo".to_string(),
             messages: vec![OpenAiChatMessage {
                 role: "assistant".to_string(),
-                content: OpenAiContent::Null,
+                content: None,
                 tool_call_id: None,
                 name: None,
                 tool_calls: Some(vec![OpenAiToolCall {
@@ -339,7 +339,7 @@ mod tests {
             model: "gpt-3.5-turbo".to_string(),
             messages: vec![OpenAiChatMessage {
                 role: "tool".to_string(),
-                content: OpenAiContent::String("{\"result\": \"success\"}".to_string()),
+                content: Some(OpenAiContent::String("{\"result\": \"success\"}".to_string())),
                 tool_call_id: Some("call_123".to_string()),
                 name: None,
                 tool_calls: None,
