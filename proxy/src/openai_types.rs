@@ -1,22 +1,37 @@
 use crate::error::CustomError;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
 
-/// OpenAI-compatible content format that can be either a string or an array of content objects.
+/// A struct that holds a vector of `OpenAiContentObject` and can be deserialized from either a string or an array of content objects.
 ///
-/// This enum handles the dual content format support required by the OpenAI API:
-/// - String format: `"content": "Hello world"`
-/// - Array format: `"content": [{"type": "text", "text": "Hello world"}]`
-/// 
-/// Note: Null content is represented by wrapping this enum in an `Option`.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(untagged)]
-pub enum OpenAiContent {
-    /// Simple string content format
-    String(String),
-    /// Array of structured content objects
-    Array(Vec<OpenAiContentObject>),
+/// This struct is designed to handle the dual content format supported by the OpenAI API, where the `"content"` field can be either a single string or an array of content objects.
+///
+/// - String format: `"content": "Hello world"` is deserialized into `vec![OpenAiContentObject { content_type: "text", text: "Hello world" }]`.
+/// - Array format: `"content": [{"type": "text", "text": "Hello world"}]` is deserialized directly into a `Vec<OpenAiContentObject>`.
+///
+/// Note: Null content is represented by wrapping this struct in an `Option`.
+fn deserialize_content<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<OpenAiContentObject>>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ContentHelper {
+        String(String),
+        Array(Vec<OpenAiContentObject>),
+    }
+
+    match Option::<ContentHelper>::deserialize(deserializer)? {
+        Some(ContentHelper::String(s)) => Ok(Some(vec![OpenAiContentObject {
+            content_type: "text".to_string(),
+            text: s,
+        }])),
+        Some(ContentHelper::Array(a)) => Ok(Some(a)),
+        None => Ok(None),
+    }
 }
 
 /// Represents a single content object in the OpenAI array format.
@@ -105,7 +120,8 @@ pub struct OpenAiChatMessage {
     /// The role of the message sender (system, user, assistant, tool)
     pub role: String,
     /// The message content in either string or array format, or None for null content
-    pub content: Option<OpenAiContent>,
+    #[serde(deserialize_with = "deserialize_content")]
+    pub content: Option<Vec<OpenAiContentObject>>,
     /// Optional tool call ID for tool messages
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
@@ -148,36 +164,6 @@ pub struct OpenAiChatRequest {
     pub tool_choice: Option<OpenAiToolChoice>,
 }
 
-use std::fmt;
-
-impl OpenAiContent {
-    /// Converts OpenAI content into a vector of `OpenAiContentObject`.
-    ///
-    /// This method normalizes the `OpenAiContent` enum into a consistent
-    /// `Vec<OpenAiContentObject>` format.
-    ///
-    /// # Returns
-    /// A `Vec<OpenAiContentObject>` containing the content.
-    pub fn into_content_objects(self) -> Vec<OpenAiContentObject> {
-        match self {
-            OpenAiContent::String(text) => vec![OpenAiContentObject {
-                content_type: "text".to_string(),
-                text,
-            }],
-            OpenAiContent::Array(objects) => objects,
-        }
-    }
-}
-
-impl fmt::Display for OpenAiContent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let text: String = match self {
-            OpenAiContent::String(s) => s.clone(),
-            OpenAiContent::Array(objects) => objects.iter().map(|obj| &obj.text).cloned().collect(),
-        };
-        write!(f, "{text}")
-    }
-}
 
 /// Generates tool XML for embedding in messages.
 fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> String {
@@ -266,9 +252,16 @@ struct ToolOutput {
 impl From<OpenAiChatMessage> for ChatMessage {
     fn from(msg: OpenAiChatMessage) -> Self {
         if msg.role == "tool" {
+            let output = msg
+                .content
+                .as_ref()
+                .and_then(|v| v.first())
+                .map(|obj| obj.text.clone())
+                .unwrap_or_default();
+
             let tool_output = ToolOutput {
                 tool_call_id: msg.tool_call_id.unwrap_or_default(),
-                output: msg.content.as_ref().map(|c| c.to_string()).unwrap_or_default(),
+                output,
             };
             let json_output = serde_json::to_string(&tool_output).unwrap_or_default();
             let new_content = format!("<tool_output>{}</tool_output>", json_output);
@@ -278,7 +271,6 @@ impl From<OpenAiChatMessage> for ChatMessage {
 
         let mut content_objects: Vec<ContentObject> = msg
             .content
-            .map(|c| c.into_content_objects())
             .unwrap_or_default()
             .into_iter()
             .map(|obj| obj.into())
