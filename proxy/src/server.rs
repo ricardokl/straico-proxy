@@ -142,15 +142,11 @@ mod tests {
         .await;
         let req_payload = OpenAiChatRequest {
             model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage {
-                role: "user".to_string(),
-                content: Some(vec![OpenAiContentObject {
+            messages: vec![OpenAiChatMessage::User {
+                content: vec![OpenAiContentObject {
                     content_type: "text".to_string(),
                     text: "Hello".to_string(),
-                }]),
-                tool_call_id: None,
-                name: None,
-                tool_calls: None,
+                }],
             }],
             temperature: None,
             max_tokens: None,
@@ -239,11 +235,8 @@ mod tests {
         .await;
         let req_payload = OpenAiChatRequest {
             model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage {
-                role: "assistant".to_string(),
+            messages: vec![OpenAiChatMessage::Assistant {
                 content: None,
-                tool_call_id: None,
-                name: None,
                 tool_calls: Some(vec![OpenAiToolCall {
                     id: "call_123".to_string(),
                     tool_type: "function".to_string(),
@@ -275,11 +268,12 @@ mod tests {
         let received_body: serde_json::Value =
             serde_json::from_slice(&received_request.body).unwrap();
 
-        let expected_tool_calls = serde_json::to_string(&req_payload.messages[0]
-            .tool_calls
-            .clone()
-            .unwrap())
-        .unwrap();
+        let expected_tool_calls =
+            if let OpenAiChatMessage::Assistant { tool_calls, .. } = &req_payload.messages[0] {
+                serde_json::to_string(tool_calls.as_ref().unwrap()).unwrap()
+            } else {
+                panic!("Expected Assistant message");
+            };
 
         assert_eq!(
             received_body["messages"][0]["content"][0]["text"],
@@ -340,15 +334,12 @@ mod tests {
         .await;
         let req_payload = OpenAiChatRequest {
             model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage {
-                role: "tool".to_string(),
-                content: Some(vec![OpenAiContentObject {
+            messages: vec![OpenAiChatMessage::Tool {
+                tool_call_id: "call_123".to_string(),
+                content: vec![OpenAiContentObject {
                     content_type: "text".to_string(),
                     text: "{\"result\": \"success\"}".to_string(),
-                }]),
-                tool_call_id: Some("call_123".to_string()),
-                name: None,
-                tool_calls: None,
+                }],
             }],
             temperature: None,
             max_tokens: None,

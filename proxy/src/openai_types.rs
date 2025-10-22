@@ -1,17 +1,48 @@
 use crate::error::CustomError;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{ser::Serializer, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
 
-/// A struct that holds a vector of `OpenAiContentObject` and can be deserialized from either a string or an array of content objects.
-///
-/// This struct is designed to handle the dual content format supported by the OpenAI API, where the `"content"` field can be either a single string or an array of content objects.
-///
-/// - String format: `"content": "Hello world"` is deserialized into `vec![OpenAiContentObject { content_type: "text", text: "Hello world" }]`.
-/// - Array format: `"content": [{"type": "text", "text": "Hello world"}]` is deserialized directly into a `Vec<OpenAiContentObject>`.
-///
-/// Note: Null content is represented by wrapping this struct in an `Option`.
-fn deserialize_content<'de, D>(
+fn deserialize_content_vector<'de, D>(
+    deserializer: D,
+) -> Result<Vec<OpenAiContentObject>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum ContentHelper {
+        String(String),
+        Array(Vec<OpenAiContentObject>),
+    }
+
+    match ContentHelper::deserialize(deserializer)? {
+        ContentHelper::String(s) => Ok(vec![OpenAiContentObject {
+            content_type: "text".to_string(),
+            text: s,
+        }]),
+        ContentHelper::Array(a) => Ok(a),
+    }
+}
+
+fn serialize_content_vector<S>(
+    content: &Vec<OpenAiContentObject>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    if content.len() == 1 {
+        if let Some(first) = content.first() {
+            if first.content_type == "text" {
+                return serializer.serialize_str(&first.text);
+            }
+        }
+    }
+    content.serialize(serializer)
+}
+
+fn deserialize_optional_content_vector<'de, D>(
     deserializer: D,
 ) -> Result<Option<Vec<OpenAiContentObject>>, D::Error>
 where
@@ -34,6 +65,20 @@ where
     }
 }
 
+fn serialize_optional_content_vector<S>(
+    content: &Option<Vec<OpenAiContentObject>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match content {
+        Some(vec) => serialize_content_vector(vec, serializer),
+        None => serializer.serialize_none(),
+    }
+}
+
+
 /// Represents a single content object in the OpenAI array format.
 ///
 /// This structure matches the OpenAI API specification for content objects
@@ -46,6 +91,7 @@ pub struct OpenAiContentObject {
     /// The actual text content
     pub text: String,
 }
+
 
 /// Represents a function definition within a tool.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -116,21 +162,41 @@ pub struct OpenAiToolCall {
 /// This structure handles incoming OpenAI-style messages that need to be
 /// converted to the new Straico chat format.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct OpenAiChatMessage {
-    /// The role of the message sender (system, user, assistant, tool)
-    pub role: String,
-    /// The message content in either string or array format, or None for null content
-    #[serde(deserialize_with = "deserialize_content")]
-    pub content: Option<Vec<OpenAiContentObject>>,
-    /// Optional tool call ID for tool messages
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_call_id: Option<String>,
-    /// Optional name for function/tool messages
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    /// Optional tool calls made by assistant messages
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<OpenAiToolCall>>,
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum OpenAiChatMessage {
+    System {
+        #[serde(
+            deserialize_with = "deserialize_content_vector",
+            serialize_with = "serialize_content_vector"
+        )]
+        content: Vec<OpenAiContentObject>,
+    },
+    User {
+        #[serde(
+            deserialize_with = "deserialize_content_vector",
+            serialize_with = "serialize_content_vector"
+        )]
+        content: Vec<OpenAiContentObject>,
+    },
+    Assistant {
+        #[serde(
+            deserialize_with = "deserialize_optional_content_vector",
+            serialize_with = "serialize_optional_content_vector",
+            default,
+            skip_serializing_if = "Option::is_none"
+        )]
+        content: Option<Vec<OpenAiContentObject>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_calls: Option<Vec<OpenAiToolCall>>,
+    },
+    Tool {
+        tool_call_id: String,
+        #[serde(
+            deserialize_with = "deserialize_content_vector",
+            serialize_with = "serialize_content_vector"
+        )]
+        content: Vec<OpenAiContentObject>,
+    },
 }
 
 /// Represents a complete OpenAI chat request.
@@ -251,42 +317,52 @@ struct ToolOutput {
 
 impl From<OpenAiChatMessage> for ChatMessage {
     fn from(msg: OpenAiChatMessage) -> Self {
-        if msg.role == "tool" {
-            let output = msg
-                .content
-                .as_ref()
-                .and_then(|v| v.first())
-                .map(|obj| obj.text.clone())
-                .unwrap_or_default();
+        match msg {
+            OpenAiChatMessage::System { content } => ChatMessage::new(
+                "system".to_string(),
+                content.into_iter().map(|c| c.into()).collect(),
+            ),
+            OpenAiChatMessage::User { content } => ChatMessage::new(
+                "user".to_string(),
+                content.into_iter().map(|c| c.into()).collect(),
+            ),
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                let mut content_objects: Vec<ContentObject> = content
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|c| c.into())
+                    .collect();
 
-            let tool_output = ToolOutput {
-                tool_call_id: msg.tool_call_id.unwrap_or_default(),
-                output,
-            };
-            let json_output = serde_json::to_string(&tool_output).unwrap_or_default();
-            let new_content = format!("<tool_output>{}</tool_output>", json_output);
-
-            return ChatMessage::new("user".to_string(), vec![ContentObject::text(new_content)]);
-        }
-
-        let mut content_objects: Vec<ContentObject> = msg
-            .content
-            .unwrap_or_default()
-            .into_iter()
-            .map(|obj| obj.into())
-            .collect();
-
-        // TODO: This is ok for now, first test if it works, otherwise
-        // break each individual tool call into its own message
-        if let Some(tool_calls) = msg.tool_calls {
-            if !tool_calls.is_empty() {
-                content_objects.push(ContentObject::text("<tool_calls>"));
-                let tool_calls_str = serde_json::to_string(&tool_calls).unwrap_or_default();
-                content_objects.push(ContentObject::text(tool_calls_str));
-                content_objects.push(ContentObject::text("</tool_calls>"));
+                if let Some(tool_calls) = tool_calls {
+                    if !tool_calls.is_empty() {
+                        content_objects.push(ContentObject::text("<tool_calls>"));
+                        let tool_calls_str =
+                            serde_json::to_string(&tool_calls).unwrap_or_default();
+                        content_objects.push(ContentObject::text(tool_calls_str));
+                        content_objects.push(ContentObject::text("</tool_calls>"));
+                    }
+                }
+                ChatMessage::new("assistant".to_string(), content_objects)
+            }
+            OpenAiChatMessage::Tool {
+                tool_call_id,
+                content,
+            } => {
+                let output = content
+                    .first()
+                    .map(|obj| obj.text.clone())
+                    .unwrap_or_default();
+                let tool_output = ToolOutput {
+                    tool_call_id,
+                    output,
+                };
+                let json_output = serde_json::to_string(&tool_output).unwrap_or_default();
+                let new_content = format!("<tool_output>{}</tool_output>", json_output);
+                ChatMessage::new("user".to_string(), vec![ContentObject::text(new_content)])
             }
         }
-
-        ChatMessage::new(msg.role, content_objects)
     }
 }
