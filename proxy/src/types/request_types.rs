@@ -1,7 +1,7 @@
 use crate::error::CustomError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject};
+use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject, ChatContent};
 
 use super::common_types::{OpenAiChatMessage, OpenAiContent, OpenAiContentObject};
 
@@ -209,7 +209,7 @@ impl From<OpenAiChatMessage> for ChatMessage {
                 let new_content = format!("<tool_output>{}</tool_output>", json_output);
 
                 ChatMessage::User {
-                    content: vec![ContentObject::text(new_content)],
+                    content: ChatContent::Array(vec![ContentObject::text(new_content)]),
                 }
             }
             OpenAiChatMessage::Assistant { content, tool_calls, .. } => {
@@ -232,7 +232,7 @@ impl From<OpenAiChatMessage> for ChatMessage {
                 }
 
                 ChatMessage::Assistant {
-                    content: content_objects,
+                    content: ChatContent::Array(content_objects),
                 }
             }
             OpenAiChatMessage::System { content, .. } => {
@@ -243,7 +243,7 @@ impl From<OpenAiChatMessage> for ChatMessage {
                     .collect();
 
                 ChatMessage::System {
-                    content: content_objects,
+                    content: ChatContent::Array(content_objects),
                 }
             }
             OpenAiChatMessage::User { content, .. } => {
@@ -254,7 +254,7 @@ impl From<OpenAiChatMessage> for ChatMessage {
                     .collect();
 
                 ChatMessage::User {
-                    content: content_objects,
+                    content: ChatContent::Array(content_objects),
                 }
             }
         }

@@ -1,6 +1,6 @@
 use super::{
     ChatMessage, ChatRequest, ChatResponseContent, ContentObject,
-    chat_request::ContentObject as RequestContentObject,
+    chat_request::{ContentObject as RequestContentObject, ChatContent},
     chat_response::ChatContentObject as ResponseContentObject,
 };
 use crate::chat::{Chat, Message, Tool};
@@ -32,7 +32,12 @@ impl From<ResponseContentObject> for RequestContentObject {
 /// Instead, we provide utility functions for these conversions
 impl From<Message> for ChatMessage {
     fn from(message: Message) -> Self {
-        let content = message.content.map_or(vec![], |c| c.into());
+        let content_vec: Vec<RequestContentObject> = message.content.map_or(vec![], |c| c.into());
+        let content = if content_vec.is_empty() {
+            ChatContent::String(String::new())
+        } else {
+            ChatContent::Array(content_vec)
+        };
         match message.role.as_str() {
             "system" => ChatMessage::System { content },
             "assistant" => ChatMessage::Assistant { content },
@@ -182,9 +187,11 @@ pub mod utils {
             ChatMessage::User { content } => content,
             ChatMessage::Assistant { content } => content,
         };
-        !content.is_empty()
-            && content
-                .iter()
-                .any(|obj| !obj.text.trim().is_empty())
+        match content {
+            ChatContent::String(s) => !s.trim().is_empty(),
+            ChatContent::Array(objects) => {
+                !objects.is_empty() && objects.iter().any(|obj| !obj.text.trim().is_empty())
+            }
+        }
     }
 }

@@ -1,4 +1,38 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+
+/// Content format that can be either a string or an array of content objects.
+///
+/// This enum handles the dual content format support:
+/// - String format: `"content": "Hello world"`
+/// - Array format: `"content": [{"type": "text", "text": "Hello world"}]`
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(untagged)]
+pub enum ChatContent {
+    /// Simple string content format
+    String(String),
+    /// Array of structured content objects
+    Array(Vec<ContentObject>),
+}
+
+impl ChatContent {
+    /// Convert ChatContent to a Vec<ContentObject>
+    pub fn into_content_objects(self) -> Vec<ContentObject> {
+        match self {
+            ChatContent::String(s) => vec![ContentObject::text(s)],
+            ChatContent::Array(objects) => objects,
+        }
+    }
+
+    /// Create ChatContent from a string
+    pub fn from_string<S: Into<String>>(s: S) -> Self {
+        ChatContent::String(s.into())
+    }
+
+    /// Create ChatContent from a vec of ContentObjects
+    pub fn from_array(objects: Vec<ContentObject>) -> Self {
+        ChatContent::Array(objects)
+    }
+}
 
 /// A request structure for the new Straico chat endpoint.
 ///
@@ -30,23 +64,23 @@ pub struct ChatRequest {
 /// - System: mandatory content for system-level instructions
 /// - User: mandatory content for user input
 /// - Assistant: mandatory content for assistant responses (unlike OpenAI where it's optional)
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "role", rename_all = "lowercase")]
 pub enum ChatMessage {
     /// System message with mandatory content
     System {
-        /// The message content as structured content objects
-        content: Vec<ContentObject>,
+        /// The message content (string or array of content objects)
+        content: ChatContent,
     },
     /// User message with mandatory content
     User {
-        /// The message content as structured content objects
-        content: Vec<ContentObject>,
+        /// The message content (string or array of content objects)
+        content: ChatContent,
     },
     /// Assistant message with mandatory content
     Assistant {
-        /// The message content as structured content objects
-        content: Vec<ContentObject>,
+        /// The message content (string or array of content objects)
+        content: ChatContent,
     },
 }
 
@@ -58,7 +92,7 @@ pub enum ChatMessage {
 /// # Fields
 /// * `content_type` - The type of content (typically "text")
 /// * `text` - The actual text content
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ContentObject {
     /// The type of content object
     #[serde(rename = "type")]
@@ -176,7 +210,7 @@ impl ChatMessage {
     /// A new ChatMessage with role "system"
     pub fn system<S: Into<String>>(text: S) -> Self {
         ChatMessage::System {
-            content: vec![ContentObject::text(text)],
+            content: ChatContent::String(text.into()),
         }
     }
 
@@ -189,7 +223,7 @@ impl ChatMessage {
     /// A new ChatMessage with role "user"
     pub fn user<S: Into<String>>(text: S) -> Self {
         ChatMessage::User {
-            content: vec![ContentObject::text(text)],
+            content: ChatContent::String(text.into()),
         }
     }
 
@@ -202,7 +236,7 @@ impl ChatMessage {
     /// A new ChatMessage with role "assistant"
     pub fn assistant<S: Into<String>>(text: S) -> Self {
         ChatMessage::Assistant {
-            content: vec![ContentObject::text(text)],
+            content: ChatContent::String(text.into()),
         }
     }
 }

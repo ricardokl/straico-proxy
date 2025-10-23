@@ -8,10 +8,15 @@ mod tests {
 
     #[test]
     fn test_chat_message_convenience_methods() {
+        use crate::endpoints::chat::ChatContent;
+        
         let system_msg = ChatMessage::system("System prompt");
         match system_msg {
             ChatMessage::System { content } => {
-                assert_eq!(content[0].text, "System prompt");
+                match content {
+                    ChatContent::String(s) => assert_eq!(s, "System prompt"),
+                    _ => panic!("Expected String content"),
+                }
             }
             _ => panic!("Expected System variant"),
         }
@@ -19,7 +24,10 @@ mod tests {
         let user_msg = ChatMessage::user("User input");
         match user_msg {
             ChatMessage::User { content } => {
-                assert_eq!(content[0].text, "User input");
+                match content {
+                    ChatContent::String(s) => assert_eq!(s, "User input"),
+                    _ => panic!("Expected String content"),
+                }
             }
             _ => panic!("Expected User variant"),
         }
@@ -27,7 +35,10 @@ mod tests {
         let assistant_msg = ChatMessage::assistant("Assistant response");
         match assistant_msg {
             ChatMessage::Assistant { content } => {
-                assert_eq!(content[0].text, "Assistant response");
+                match content {
+                    ChatContent::String(s) => assert_eq!(s, "Assistant response"),
+                    _ => panic!("Expected String content"),
+                }
             }
             _ => panic!("Expected Assistant variant"),
         }
@@ -51,10 +62,10 @@ mod tests {
         println!("Assistant JSON: {}", json);
         assert!(json.contains(r#""role":"assistant""#));
         
-        // Verify the structure is correct - role is at the root level
+        // Verify the structure is correct - role is at the root level, content can be string or array
         let system_value: serde_json::Value = serde_json::from_str(&serde_json::to_string(&system_msg).unwrap()).unwrap();
         assert_eq!(system_value["role"], "system");
-        assert!(system_value["content"].is_array());
+        assert!(system_value["content"].is_string() || system_value["content"].is_array());
     }
 
     #[test]
