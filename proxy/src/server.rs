@@ -1,5 +1,5 @@
 use crate::{
-    error::CustomError, openai_types::OpenAiChatRequest, streaming::CompletionStream,
+    error::CustomError, types::OpenAiChatRequest, streaming::CompletionStream,
 };
 use actix_web::{post, web, HttpResponse};
 use bytes::Bytes;
@@ -85,7 +85,7 @@ pub async fn openai_chat_completion(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::openai_types::{
+    use crate::types::{
         OpenAiChatMessage, OpenAiContent, OpenAiFunctionCall, OpenAiToolCall,
     };
     use actix_web::{test, web, App};
