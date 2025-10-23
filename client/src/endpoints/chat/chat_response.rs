@@ -17,30 +17,21 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatResponse {
     /// Unique identifier for this completion
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    /// The provider name
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<String>,
+    pub id: String,
     /// The model that generated the response
     pub model: String,
     /// The type of object (e.g., "chat.completion")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub object: Option<String>,
+    pub object: String,
     /// Unix timestamp of when this completion was created
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub created: Option<u64>,
+    pub created: u64,
     /// Array of generated response choices
     pub choices: Vec<ChatChoice>,
     /// Optional token usage statistics
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<ChatUsage>,
+    pub usage: ChatUsage,
     /// Price breakdown for the completion
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub price: Option<MetricBreakdown>,
+    pub price: MetricBreakdown,
     /// Word count breakdown
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub words: Option<MetricBreakdown>,
+    pub words: MetricBreakdown,
 }
 
 /// Represents a single choice/response from the chat completion.
