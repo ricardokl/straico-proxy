@@ -6,22 +6,22 @@ use serde::{Deserialize, Serialize};
 ///
 /// # Fields
 /// * `id` - Unique identifier for this completion
-/// * `provider` - The provider information
+/// * `provider` - The provider name
 /// * `model` - The model that generated the response
 /// * `object` - The type of object (e.g., "chat.completion")
 /// * `created` - Unix timestamp of when this completion was created
 /// * `choices` - Array of generated response choices
 /// * `usage` - Optional token usage statistics
-/// * `price` - Price information for the completion
-/// * `words` - Word count information
+/// * `price` - Price breakdown for the completion
+/// * `words` - Word count breakdown
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatResponse {
     /// Unique identifier for this completion
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
-    /// The provider information
+    /// The provider name
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider: Option<serde_json::Value>,
+    pub provider: Option<String>,
     /// The model that generated the response
     pub model: String,
     /// The type of object (e.g., "chat.completion")
@@ -35,12 +35,12 @@ pub struct ChatResponse {
     /// Optional token usage statistics
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<ChatUsage>,
-    /// Price information for the completion
+    /// Price breakdown for the completion
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub price: Option<serde_json::Value>,
-    /// Word count information
+    pub price: Option<MetricBreakdown>,
+    /// Word count breakdown
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub words: Option<serde_json::Value>,
+    pub words: Option<MetricBreakdown>,
 }
 
 /// Represents a single choice/response from the chat completion.
@@ -166,6 +166,25 @@ pub struct ChatUsage {
     pub completion_tokens: u32,
     /// Total combined token count
     pub total_tokens: u32,
+}
+
+/// Breakdown of metrics (price or word count) for input, output, and total.
+///
+/// Used for both price (as floats) and word counts (deserialized as floats but
+/// representing integers). Using f64 allows handling both use cases.
+///
+/// # Fields
+/// * `input` - Metric for the input/prompt
+/// * `output` - Metric for the generated output/completion
+/// * `total` - Total combined metric
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+pub struct MetricBreakdown {
+    /// Metric for the input/prompt
+    pub input: f64,
+    /// Metric for the generated output/completion
+    pub output: f64,
+    /// Total combined metric
+    pub total: f64,
 }
 
 impl ChatResponse {

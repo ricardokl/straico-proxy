@@ -97,6 +97,36 @@ mod tests {
     }
 
     #[test]
+    fn test_metric_breakdown() {
+        use crate::endpoints::chat::MetricBreakdown;
+        
+        // Test price as floats
+        let price = MetricBreakdown {
+            input: 0.001,
+            output: 0.002,
+            total: 0.003,
+        };
+        let json = serde_json::to_string(&price).unwrap();
+        assert!(json.contains("0.001"));
+        
+        // Test words as floats (even though they're integers in the API)
+        let words = MetricBreakdown {
+            input: 100.0,
+            output: 200.0,
+            total: 300.0,
+        };
+        let json = serde_json::to_string(&words).unwrap();
+        assert!(json.contains("100"));
+        
+        // Test deserialization from integers (as the API sends for words)
+        let json_int = r#"{"input":100,"output":200,"total":300}"#;
+        let parsed: MetricBreakdown = serde_json::from_str(json_int).unwrap();
+        assert_eq!(parsed.input, 100.0);
+        assert_eq!(parsed.output, 200.0);
+        assert_eq!(parsed.total, 300.0);
+    }
+
+    #[test]
     fn test_chat_choice_methods() {
         let choice = create_test_chat_choice();
 
