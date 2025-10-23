@@ -102,13 +102,12 @@ mod tests {
         // Arrange
         let server = MockServer::start().await;
         let mock_response = ChatResponse {
-            id: Some("chatcmpl-123".to_string()),
-            provider: None,
+            id: "chatcmpl-123".to_string(),
             model: "gpt-3.5-turbo-0125".to_string(),
-            object: Some("chat.completion".to_string()),
-            created: Some(1677652288),
+            object: "chat.completion".to_string(),
+            created: 1677652288,
             choices: vec![ChatChoice {
-                index: Some(0),
+                index: 0,
                 message: Message {
                     role: "assistant".to_string(),
                     content: Some(ChatResponseContent::Text("Hello there!".to_string())),
@@ -116,9 +115,9 @@ mod tests {
                 },
                 finish_reason: "stop".to_string(),
             }],
-            usage: None,
-            price: None,
-            words: None,
+            usage: Default::default(),
+            price: Default::default(),
+            words: Default::default(),
         };
         Mock::given(method("POST"))
             .and(path("/v0/chat/completions"))
@@ -197,13 +196,12 @@ mod tests {
         // Arrange
         let server = MockServer::start().await;
         let mock_response = ChatResponse {
-            id: Some("chatcmpl-123".to_string()),
-            provider: None,
+            id: "chatcmpl-123".to_string(),
             model: "gpt-3.5-turbo-0125".to_string(),
-            object: Some("chat.completion".to_string()),
-            created: Some(1677652288),
+            object: "chat.completion".to_string(),
+            created: 1677652288,
             choices: vec![ChatChoice {
-                index: Some(0),
+                index: 0,
                 message: Message {
                     role: "assistant".to_string(),
                     content: Some(ChatResponseContent::Text("Hello there!".to_string())),
@@ -211,9 +209,9 @@ mod tests {
                 },
                 finish_reason: "stop".to_string(),
             }],
-            usage: None,
-            price: None,
-            words: None,
+            usage: Default::default(),
+            price: Default::default(),
+            words: Default::default(),
         };
         Mock::given(method("POST"))
             .and(path("/v0/chat/completions"))
@@ -299,13 +297,12 @@ mod tests {
         // Arrange
         let server = MockServer::start().await;
         let mock_response = ChatResponse {
-            id: Some("chatcmpl-123".to_string()),
-            provider: None,
+            id: "chatcmpl-123".to_string(),
             model: "gpt-3.5-turbo-0125".to_string(),
-            object: Some("chat.completion".to_string()),
-            created: Some(1677652288),
+            object: "chat.completion".to_string(),
+            created: 1677652288,
             choices: vec![ChatChoice {
-                index: Some(0),
+                index: 0,
                 message: Message {
                     role: "assistant".to_string(),
                     content: Some(ChatResponseContent::Text("Hello there!".to_string())),
@@ -313,9 +310,9 @@ mod tests {
                 },
                 finish_reason: "stop".to_string(),
             }],
-            usage: None,
-            price: None,
-            words: None,
+            usage: Default::default(),
+            price: Default::default(),
+            words: Default::default(),
         };
         Mock::given(method("POST"))
             .and(path("/v0/chat/completions"))

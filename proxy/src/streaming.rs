@@ -246,7 +246,7 @@ impl From<Message> for Delta {
 impl From<Choice> for ChoiceStream {
     fn from(value: Choice) -> Self {
         Self {
-            index: value.index.unwrap_or(0),
+            index: value.index,
             delta: value.message.into(),
             finish_reason: Some(value.finish_reason.into()),
         }
@@ -257,12 +257,12 @@ impl From<Completion> for CompletionStream {
     fn from(value: Completion) -> Self {
         Self {
             choices: value.choices.into_iter().map(Into::into).collect(),
-            object: value.object.unwrap_or_default().into(),
-            id: value.id.unwrap_or_default().into(),
+            object: value.object.into(),
+            id: value.id.into(),
             model: value.model.into(),
-            created: value.created.unwrap_or(0),
+            created: value.created,
             #[cfg(not(test))]
-            usage: value.usage.unwrap_or_default(),
+            usage: value.usage,
             #[cfg(test)]
             usage: (),
         }

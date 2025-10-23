@@ -43,6 +43,9 @@ pub struct ChatResponse {
 /// * `message` - The generated response message
 /// * `finish_reason` - Why the model stopped generating (e.g., "stop", "length", "tool_calls")
 /// * `index` - Zero-based position of this choice in the list of responses
+///
+/// # Note
+/// Optional fields not implemented: "logprobs", "native_finish_reason"
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatChoice {
     /// The generated response message
@@ -50,8 +53,7 @@ pub struct ChatChoice {
     /// Reason why the model stopped generating
     pub finish_reason: String,
     /// Zero-based position of this choice in the list of responses
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub index: Option<u8>,
+    pub index: u8,
 }
 
 /// Represents a message in the chat response.
@@ -64,6 +66,9 @@ pub struct ChatChoice {
 /// * `role` - The role of the message sender (typically "assistant")
 /// * `content` - The message content (may be string or structured)
 /// * `tool_calls` - Optional tool calls made by the assistant
+///
+/// # Note
+/// Optional fields not implemented: "refusal", "reasoning"
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Message {
     /// The role of the message sender
