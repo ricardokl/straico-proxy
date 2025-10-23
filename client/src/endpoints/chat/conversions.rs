@@ -33,7 +33,11 @@ impl From<ResponseContentObject> for RequestContentObject {
 impl From<Message> for ChatMessage {
     fn from(message: Message) -> Self {
         let content = message.content.map_or(vec![], |c| c.into());
-        ChatMessage::new(message.role, content)
+        match message.role.as_str() {
+            "system" => ChatMessage::System { content },
+            "assistant" => ChatMessage::Assistant { content },
+            _ => ChatMessage::User { content },
+        }
     }
 }
 
@@ -173,9 +177,13 @@ pub mod utils {
 
     /// Validates that a ChatMessage has valid content.
     pub fn validate_message_content(message: &ChatMessage) -> bool {
-        !message.content.is_empty()
-            && message
-                .content
+        let content = match message {
+            ChatMessage::System { content } => content,
+            ChatMessage::User { content } => content,
+            ChatMessage::Assistant { content } => content,
+        };
+        !content.is_empty()
+            && content
                 .iter()
                 .any(|obj| !obj.text.trim().is_empty())
     }

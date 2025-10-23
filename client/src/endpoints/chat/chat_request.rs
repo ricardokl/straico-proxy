@@ -26,18 +26,28 @@ pub struct ChatRequest {
 
 /// Represents a single message in the chat conversation.
 ///
-/// Each message has a role (system, user, assistant, tool) and content that can be
-/// either a simple string or an array of structured content objects.
-///
-/// # Fields
-/// * `role` - The role of the message sender (system, user, assistant, tool)
-/// * `content` - The message content as an array of content objects
+/// Each message variant has specific content requirements:
+/// - System: mandatory content for system-level instructions
+/// - User: mandatory content for user input
+/// - Assistant: mandatory content for assistant responses (unlike OpenAI where it's optional)
 #[derive(Serialize, Debug, Clone)]
-pub struct ChatMessage {
-    /// The role of the message sender
-    pub role: String,
-    /// The message content as structured content objects
-    pub content: Vec<ContentObject>,
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum ChatMessage {
+    /// System message with mandatory content
+    System {
+        /// The message content as structured content objects
+        content: Vec<ContentObject>,
+    },
+    /// User message with mandatory content
+    User {
+        /// The message content as structured content objects
+        content: Vec<ContentObject>,
+    },
+    /// Assistant message with mandatory content
+    Assistant {
+        /// The message content as structured content objects
+        content: Vec<ContentObject>,
+    },
 }
 
 /// Represents a single content object within a chat message.
@@ -157,21 +167,6 @@ impl ChatRequestBuilder {
 }
 
 impl ChatMessage {
-    /// Creates a new chat message.
-    ///
-    /// # Arguments
-    /// * `role` - The role of the message sender
-    /// * `content` - The content objects for the message
-    ///
-    /// # Returns
-    /// A new ChatMessage instance
-    pub fn new<S: Into<String>>(role: S, content: Vec<ContentObject>) -> Self {
-        Self {
-            role: role.into(),
-            content,
-        }
-    }
-
     /// Creates a system message with text content.
     ///
     /// # Arguments
@@ -180,7 +175,9 @@ impl ChatMessage {
     /// # Returns
     /// A new ChatMessage with role "system"
     pub fn system<S: Into<String>>(text: S) -> Self {
-        Self::new("system", vec![ContentObject::text(text)])
+        ChatMessage::System {
+            content: vec![ContentObject::text(text)],
+        }
     }
 
     /// Creates a user message with text content.
@@ -191,7 +188,9 @@ impl ChatMessage {
     /// # Returns
     /// A new ChatMessage with role "user"
     pub fn user<S: Into<String>>(text: S) -> Self {
-        Self::new("user", vec![ContentObject::text(text)])
+        ChatMessage::User {
+            content: vec![ContentObject::text(text)],
+        }
     }
 
     /// Creates an assistant message with text content.
@@ -202,18 +201,9 @@ impl ChatMessage {
     /// # Returns
     /// A new ChatMessage with role "assistant"
     pub fn assistant<S: Into<String>>(text: S) -> Self {
-        Self::new("assistant", vec![ContentObject::text(text)])
-    }
-
-    /// Creates a tool message with text content.
-    ///
-    /// # Arguments
-    /// * `text` - The tool message text
-    ///
-    /// # Returns
-    /// A new ChatMessage with role "tool"
-    pub fn tool<S: Into<String>>(text: S) -> Self {
-        Self::new("tool", vec![ContentObject::text(text)])
+        ChatMessage::Assistant {
+            content: vec![ContentObject::text(text)],
+        }
     }
 }
 

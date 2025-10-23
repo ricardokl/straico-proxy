@@ -9,20 +9,52 @@ mod tests {
     #[test]
     fn test_chat_message_convenience_methods() {
         let system_msg = ChatMessage::system("System prompt");
-        assert_eq!(system_msg.role, "system");
-        assert_eq!(system_msg.content[0].text, "System prompt");
+        match system_msg {
+            ChatMessage::System { content } => {
+                assert_eq!(content[0].text, "System prompt");
+            }
+            _ => panic!("Expected System variant"),
+        }
 
         let user_msg = ChatMessage::user("User input");
-        assert_eq!(user_msg.role, "user");
-        assert_eq!(user_msg.content[0].text, "User input");
+        match user_msg {
+            ChatMessage::User { content } => {
+                assert_eq!(content[0].text, "User input");
+            }
+            _ => panic!("Expected User variant"),
+        }
 
         let assistant_msg = ChatMessage::assistant("Assistant response");
-        assert_eq!(assistant_msg.role, "assistant");
-        assert_eq!(assistant_msg.content[0].text, "Assistant response");
+        match assistant_msg {
+            ChatMessage::Assistant { content } => {
+                assert_eq!(content[0].text, "Assistant response");
+            }
+            _ => panic!("Expected Assistant variant"),
+        }
+    }
 
-        let tool_msg = ChatMessage::tool("Tool output");
-        assert_eq!(tool_msg.role, "tool");
-        assert_eq!(tool_msg.content[0].text, "Tool output");
+    #[test]
+    fn test_chat_message_serialization() {
+        let system_msg = ChatMessage::system("System prompt");
+        let json = serde_json::to_string(&system_msg).unwrap();
+        println!("System JSON: {}", json);
+        assert!(json.contains(r#""role":"system""#));
+        assert!(json.contains(r#""content":"#));
+
+        let user_msg = ChatMessage::user("User input");
+        let json = serde_json::to_string(&user_msg).unwrap();
+        println!("User JSON: {}", json);
+        assert!(json.contains(r#""role":"user""#));
+
+        let assistant_msg = ChatMessage::assistant("Assistant response");
+        let json = serde_json::to_string(&assistant_msg).unwrap();
+        println!("Assistant JSON: {}", json);
+        assert!(json.contains(r#""role":"assistant""#));
+        
+        // Verify the structure is correct - role is at the root level
+        let system_value: serde_json::Value = serde_json::from_str(&serde_json::to_string(&system_msg).unwrap()).unwrap();
+        assert_eq!(system_value["role"], "system");
+        assert!(system_value["content"].is_array());
     }
 
     #[test]

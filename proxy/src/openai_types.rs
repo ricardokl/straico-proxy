@@ -287,7 +287,9 @@ impl From<OpenAiChatMessage> for ChatMessage {
                 let json_output = serde_json::to_string(&tool_output).unwrap_or_default();
                 let new_content = format!("<tool_output>{}</tool_output>", json_output);
 
-                ChatMessage::new("user".to_string(), vec![ContentObject::text(new_content)])
+                ChatMessage::User {
+                    content: vec![ContentObject::text(new_content)],
+                }
             }
             OpenAiChatMessage::Assistant { content, tool_calls, .. } => {
                 let mut content_objects: Vec<ContentObject> = content
@@ -308,7 +310,9 @@ impl From<OpenAiChatMessage> for ChatMessage {
                     }
                 }
 
-                ChatMessage::new("assistant".to_string(), content_objects)
+                ChatMessage::Assistant {
+                    content: content_objects,
+                }
             }
             OpenAiChatMessage::System { content, .. } => {
                 let content_objects: Vec<ContentObject> = content
@@ -317,7 +321,9 @@ impl From<OpenAiChatMessage> for ChatMessage {
                     .map(|obj| obj.into())
                     .collect();
 
-                ChatMessage::new("system".to_string(), content_objects)
+                ChatMessage::System {
+                    content: content_objects,
+                }
             }
             OpenAiChatMessage::User { content, .. } => {
                 let content_objects: Vec<ContentObject> = content
@@ -326,7 +332,9 @@ impl From<OpenAiChatMessage> for ChatMessage {
                     .map(|obj| obj.into())
                     .collect();
 
-                ChatMessage::new("user".to_string(), content_objects)
+                ChatMessage::User {
+                    content: content_objects,
+                }
             }
         }
     }
