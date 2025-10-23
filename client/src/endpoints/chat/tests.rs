@@ -132,18 +132,19 @@ mod tests {
     // Helper functions for creating test data
     fn create_test_chat_response() -> ChatResponse {
         ChatResponse {
-            choices: vec![create_test_chat_choice()],
+            id: Some("test-id".to_string()),
+            provider: None,
             model: "test-model".to_string(),
+            object: Some("chat.completion".to_string()),
+            created: Some(1234567890),
+            choices: vec![create_test_chat_choice()],
             usage: Some(ChatUsage {
                 prompt_tokens: 10,
                 completion_tokens: 20,
                 total_tokens: 30,
             }),
-            id: Some("test-id".to_string()),
-            object: Some("chat.completion".to_string()),
-            created: Some(1234567890),
-            tools: None,
-            tool_choice: None,
+            price: None,
+            words: None,
         }
     }
 

@@ -103,9 +103,10 @@ mod tests {
         let server = MockServer::start().await;
         let mock_response = ChatResponse {
             id: Some("chatcmpl-123".to_string()),
+            provider: None,
+            model: "gpt-3.5-turbo-0125".to_string(),
             object: Some("chat.completion".to_string()),
             created: Some(1677652288),
-            model: "gpt-3.5-turbo-0125".to_string(),
             choices: vec![ChatChoice {
                 index: Some(0),
                 message: Message {
@@ -116,8 +117,8 @@ mod tests {
                 finish_reason: "stop".to_string(),
             }],
             usage: None,
-            tools: None,
-            tool_choice: None,
+            price: None,
+            words: None,
         };
         Mock::given(method("POST"))
             .and(path("/v0/chat/completions"))
@@ -197,9 +198,10 @@ mod tests {
         let server = MockServer::start().await;
         let mock_response = ChatResponse {
             id: Some("chatcmpl-123".to_string()),
+            provider: None,
+            model: "gpt-3.5-turbo-0125".to_string(),
             object: Some("chat.completion".to_string()),
             created: Some(1677652288),
-            model: "gpt-3.5-turbo-0125".to_string(),
             choices: vec![ChatChoice {
                 index: Some(0),
                 message: Message {
@@ -210,8 +212,8 @@ mod tests {
                 finish_reason: "stop".to_string(),
             }],
             usage: None,
-            tools: None,
-            tool_choice: None,
+            price: None,
+            words: None,
         };
         Mock::given(method("POST"))
             .and(path("/v0/chat/completions"))
@@ -298,9 +300,10 @@ mod tests {
         let server = MockServer::start().await;
         let mock_response = ChatResponse {
             id: Some("chatcmpl-123".to_string()),
+            provider: None,
+            model: "gpt-3.5-turbo-0125".to_string(),
             object: Some("chat.completion".to_string()),
             created: Some(1677652288),
-            model: "gpt-3.5-turbo-0125".to_string(),
             choices: vec![ChatChoice {
                 index: Some(0),
                 message: Message {
@@ -311,8 +314,8 @@ mod tests {
                 finish_reason: "stop".to_string(),
             }],
             usage: None,
-            tools: None,
-            tool_choice: None,
+            price: None,
+            words: None,
         };
         Mock::given(method("POST"))
             .and(path("/v0/chat/completions"))

@@ -3,39 +3,44 @@ use serde::{Deserialize, Serialize};
 /// Response structure for the new Straico chat endpoint.
 ///
 /// This struct represents the response from the `/v0/chat/completions` endpoint.
-/// The structure may need refinement based on actual API responses.
 ///
 /// # Fields
-/// * `choices` - Array of generated response choices
-/// * `model` - The model that generated the response
-/// * `usage` - Optional token usage statistics
 /// * `id` - Unique identifier for this completion
+/// * `provider` - The provider information
+/// * `model` - The model that generated the response
 /// * `object` - The type of object (e.g., "chat.completion")
 /// * `created` - Unix timestamp of when this completion was created
+/// * `choices` - Array of generated response choices
+/// * `usage` - Optional token usage statistics
+/// * `price` - Price information for the completion
+/// * `words` - Word count information
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatResponse {
-    /// Array of generated response choices
-    pub choices: Vec<ChatChoice>,
-    /// The model that generated the response
-    pub model: String,
-    /// Optional token usage statistics
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub usage: Option<ChatUsage>,
     /// Unique identifier for this completion
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// The provider information
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<serde_json::Value>,
+    /// The model that generated the response
+    pub model: String,
     /// The type of object (e.g., "chat.completion")
     #[serde(skip_serializing_if = "Option::is_none")]
     pub object: Option<String>,
     /// Unix timestamp of when this completion was created
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created: Option<u64>,
-    /// The tool choice that was used for the completion
+    /// Array of generated response choices
+    pub choices: Vec<ChatChoice>,
+    /// Optional token usage statistics
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<String>,
-    /// The tools that were available for the completion
+    pub usage: Option<ChatUsage>,
+    /// Price information for the completion
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<serde_json::Value>,
+    pub price: Option<serde_json::Value>,
+    /// Word count information
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub words: Option<serde_json::Value>,
 }
 
 /// Represents a single choice/response from the chat completion.
