@@ -86,11 +86,12 @@ pub async fn openai_chat_completion(
 mod tests {
     use super::*;
     use crate::types::{
-        ChatContent, OpenAiChatMessage, OpenAiToolCall, ChatFunctionCall
+        ChatContent, OpenAiChatMessage, ToolCall
     };
+    use straico_client::endpoints::chat::common_types::ChatFunctionCall;
     use actix_web::{test, web, App};
     use straico_client::endpoints::chat::chat_response::{
-        ChatChoice, ChatResponse, ChatResponseContent, Message,
+        ChatChoice, ChatResponse, Message,
     };
     use wiremock::{
         matchers::{method, path},
@@ -110,7 +111,7 @@ mod tests {
                 index: 0,
                 message: Message {
                     role: "assistant".to_string(),
-                    content: Some(ChatResponseContent::Text("Hello there!".to_string())),
+                    content: Some(ChatContent::String("Hello there!".to_string())),
                     tool_calls: None,
                 },
                 finish_reason: "stop".to_string(),
@@ -142,12 +143,8 @@ mod tests {
         .await;
         let req_payload = OpenAiChatRequest {
             model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage {
-                role: "user".to_string(),
-                content: Some(ChatContent::String("Hello".to_string())),
-                tool_call_id: None,
-                name: None,
-                tool_calls: None,
+            messages: vec![OpenAiChatMessage::User {
+                content: ChatContent::String("Hello".to_string()),
             }],
             temperature: None,
             max_tokens: None,
@@ -204,7 +201,7 @@ mod tests {
                 index: 0,
                 message: Message {
                     role: "assistant".to_string(),
-                    content: Some(ChatResponseContent::Text("Hello there!".to_string())),
+                    content: Some(ChatContent::String("Hello there!".to_string())),
                     tool_calls: None,
                 },
                 finish_reason: "stop".to_string(),
@@ -236,12 +233,9 @@ mod tests {
         .await;
         let req_payload = OpenAiChatRequest {
             model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage {
-                role: "assistant".to_string(),
+            messages: vec![OpenAiChatMessage::Assistant {
                 content: None,
-                tool_call_id: None,
-                name: None,
-                tool_calls: Some(vec![OpenAiToolCall {
+                tool_calls: Some(vec![ToolCall {
                     id: "call_123".to_string(),
                     tool_type: "function".to_string(),
                     function: ChatFunctionCall {
@@ -272,11 +266,12 @@ mod tests {
         let received_body: serde_json::Value =
             serde_json::from_slice(&received_request.body).unwrap();
 
-        let expected_tool_calls = serde_json::to_string(&req_payload.messages[0]
-            .tool_calls
-            .clone()
-            .unwrap())
-        .unwrap();
+        let expected_tool_calls = match &req_payload.messages[0] {
+            OpenAiChatMessage::Assistant { tool_calls, .. } => {
+                serde_json::to_string(&tool_calls.clone().unwrap()).unwrap()
+            }
+            _ => panic!("Expected Assistant message"),
+        };
 
         assert_eq!(
             received_body["messages"][0]["content"][0]["text"],
@@ -305,7 +300,7 @@ mod tests {
                 index: 0,
                 message: Message {
                     role: "assistant".to_string(),
-                    content: Some(ChatResponseContent::Text("Hello there!".to_string())),
+                    content: Some(ChatContent::String("Hello there!".to_string())),
                     tool_calls: None,
                 },
                 finish_reason: "stop".to_string(),
@@ -337,12 +332,9 @@ mod tests {
         .await;
         let req_payload = OpenAiChatRequest {
             model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage {
-                role: "tool".to_string(),
-                content: Some(ChatContent::String("{\"result\": \"success\"}".to_string())),
-                tool_call_id: Some("call_123".to_string()),
-                name: None,
-                tool_calls: None,
+            messages: vec![OpenAiChatMessage::Tool {
+                content: ChatContent::String("{\"result\": \"success\"}".to_string()),
+                tool_call_id: "call_123".to_string(),
             }],
             temperature: None,
             max_tokens: None,

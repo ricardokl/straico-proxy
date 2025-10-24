@@ -3,19 +3,6 @@ use serde_json::Value;
 
 use super::common_types::OpenAiChatMessage;
 
-/// Represents the details of a function call in the response.
-///
-/// # Fields
-/// * `name` - The name of the function called
-/// * `arguments` - The function arguments as a JSON string
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct ChatFunctionCall {
-    /// The name of the function being called
-    pub name: String,
-    /// The arguments to pass to the function, as a JSON string
-    pub arguments: String,
-}
-
 /// OpenAI chat completion response.
 ///
 /// This structure represents the response returned to OpenAI-compatible clients.
@@ -75,7 +62,7 @@ pub struct OpenAiChatChoice {
 /// * `completion_tokens` - Number of tokens in the completion/output
 /// * `total_tokens` - Total combined token count
 /// * `completion_tokens_details` - Additional details about completion tokens
-#[derive(Deserialize, Serialize, Debug, Clone)]
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
 pub struct Usage {
     /// Number of tokens in the prompt/input
     pub prompt_tokens: u32,

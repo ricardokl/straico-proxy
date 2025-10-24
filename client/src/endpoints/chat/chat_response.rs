@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use super::{ChatContent, MetricBreakdown, Usage, response_types::ChatFunctionCall};
+use super::{
+    common_types::ToolCall,
+    ChatContent, MetricBreakdown, Usage,
+};
 
 /// Response structure for the Straico chat endpoint.
 ///
@@ -81,25 +84,6 @@ pub struct Message {
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 
-/// Represents a tool call in the chat response.
-///
-/// This structure is compatible with the existing tool call format
-/// but adapted for the new chat endpoint.
-///
-/// # Fields
-/// * `id` - Unique identifier for the tool call
-/// * `function` - The function call details
-/// * `tool_type` - The type of tool (typically "function")
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct ToolCall {
-    /// Unique identifier for the tool call
-    pub id: String,
-    /// The function call details
-    pub function: ChatFunctionCall,
-    /// The type of tool (typically "function")
-    #[serde(rename = "type")]
-    pub tool_type: String,
-}
 impl ChatResponse {
     /// Gets the first choice from the response.
     ///

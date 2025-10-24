@@ -1,6 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-use super::response_types::ChatFunctionCall;
+/// Represents the details of a function call in the response.
+///
+/// # Fields
+/// * `name` - The name of the function called
+/// * `arguments` - The function arguments as a JSON string
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct ChatFunctionCall {
+    /// The name of the function being called
+    pub name: String,
+    /// The arguments to pass to the function, as a JSON string
+    pub arguments: String,
+}
 
 /// Content format that can be either a string or an array of content objects.
 ///
@@ -160,7 +171,7 @@ impl ChatMessage {
 
 /// Represents a tool call made by the assistant.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct OpenAiToolCall {
+pub struct ToolCall {
     /// The ID of the tool call
     pub id: String,
     /// The type of the tool (typically "function")
@@ -194,7 +205,7 @@ pub enum OpenAiChatMessage {
         content: Option<ChatContent>,
         /// Optional tool calls made by assistant messages
         #[serde(skip_serializing_if = "Option::is_none")]
-        tool_calls: Option<Vec<OpenAiToolCall>>,
+        tool_calls: Option<Vec<ToolCall>>,
     },
     /// Tool message with mandatory content
     Tool {
