@@ -2,7 +2,7 @@ use reqwest::{Client, RequestBuilder};
 use serde::Serialize;
 use std::{fmt::Display, marker::PhantomData};
 
-use crate::endpoints::chat::chat_request::ChatRequest;
+use crate::endpoints::chat::ChatRequest;
 
 /// Represents the state where no API key has been set for the request
 pub struct NoApiKey;

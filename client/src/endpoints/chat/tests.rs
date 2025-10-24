@@ -2,8 +2,8 @@
 mod tests {
 
     use crate::endpoints::chat::{
-        ChatChoice, ChatMessage, ChatRequest, ChatResponse, ChatResponseContent, ChatUsage,
-        ContentObject, Message,
+        ChatChoice, ChatMessage, ChatRequest, ChatResponse, ChatResponseContent,
+        ContentObject, Message, MetricBreakdown, Usage,
     };
 
     #[test]
@@ -178,13 +178,14 @@ mod tests {
             object: "chat.completion".to_string(),
             created: 1234567890,
             choices: vec![create_test_chat_choice()],
-            usage: ChatUsage {
+            usage: Usage {
                 prompt_tokens: 10,
                 completion_tokens: 20,
                 total_tokens: 30,
+                completion_tokens_details: None,
             },
-            price: Default::default(),
-            words: Default::default(),
+            price: MetricBreakdown::default(),
+            words: MetricBreakdown::default(),
         }
     }
 

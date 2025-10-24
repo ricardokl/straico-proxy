@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(test))]
-use straico_client::endpoints::chat::chat_response::ChatUsage as Usage;
+use straico_client::endpoints::chat::Usage;
 use straico_client::endpoints::chat::chat_response::{
     ChatChoice as Choice, ChatResponse as Completion, Message, ToolCall,
 };

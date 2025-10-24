@@ -1,15 +1,15 @@
-pub mod chat_request;
+pub mod chat_builder;
 pub mod chat_response;
+pub mod common_types;
 pub mod conversions;
-pub mod openai_common_types;
-pub mod openai_request_types;
-pub mod openai_response_types;
+pub mod request_types;
+pub mod response_types;
 #[cfg(test)]
 pub mod tests;
 
-pub use chat_request::*;
+pub use chat_builder::*;
 pub use chat_response::*;
+pub use common_types::*;
 pub use conversions::*;
-pub use openai_common_types::*;
-pub use openai_request_types::*;
-pub use openai_response_types::*;
+pub use request_types::*;
+pub use response_types::*;

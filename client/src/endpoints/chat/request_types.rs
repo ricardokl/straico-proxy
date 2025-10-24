@@ -1,9 +1,42 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::fmt;
 
-use super::openai_common_types::{OpenAiChatMessage, OpenAiContent, OpenAiContentObject};
-use super::{ChatContent, ChatMessage, ChatRequest, ContentObject};
+use super::common_types::{ChatMessage, OpenAiChatMessage};
+use super::{ChatContent, ContentObject};
+
+/// A request structure for the Straico chat endpoint.
+///
+/// This struct represents a request to the `/v0/chat/completions` endpoint with support
+/// for the new message format that uses content arrays instead of formatted prompts.
+///
+/// # Fields
+/// * `model` - Single model identifier (unlike completion endpoint which supports multiple)
+/// * `messages` - Array of chat messages with structured content
+/// * `temperature` - Optional parameter controlling randomness in generation (0.0 to 2.0)
+/// * `max_tokens` - Optional maximum number of tokens to generate
+#[derive(Serialize, Debug, Clone, Default)]
+pub struct ChatRequest {
+    /// The language model to use for generating the chat completion
+    pub model: String,
+    /// Array of messages forming the conversation context
+    pub messages: Vec<ChatMessage>,
+    /// Optional parameter controlling randomness in generation (0.0 to 2.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Optional maximum number of tokens to generate
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+}
+
+impl ChatRequest {
+    /// Creates a new ChatRequest builder.
+    ///
+    /// # Returns
+    /// A new `ChatRequestBuilder` instance for constructing the request
+    pub fn builder() -> super::ChatRequestBuilder {
+        super::ChatRequestBuilder::default()
+    }
+}
 
 /// Represents a function definition within a tool.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -77,35 +110,6 @@ pub struct OpenAiChatRequest {
     /// Optional tool choice
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<OpenAiToolChoice>,
-}
-
-impl OpenAiContent {
-    /// Converts OpenAI content into a vector of `OpenAiContentObject`.
-    ///
-    /// This method normalizes the `OpenAiContent` enum into a consistent
-    /// `Vec<OpenAiContentObject>` format.
-    ///
-    /// # Returns
-    /// A `Vec<OpenAiContentObject>` containing the content.
-    pub fn into_content_objects(self) -> Vec<OpenAiContentObject> {
-        match self {
-            OpenAiContent::String(text) => vec![OpenAiContentObject {
-                content_type: "text".to_string(),
-                text,
-            }],
-            OpenAiContent::Array(objects) => objects,
-        }
-    }
-}
-
-impl fmt::Display for OpenAiContent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let text: String = match self {
-            OpenAiContent::String(s) => s.clone(),
-            OpenAiContent::Array(objects) => objects.iter().map(|obj| &obj.text).cloned().collect(),
-        };
-        write!(f, "{text}")
-    }
 }
 
 /// Generates tool XML for embedding in messages.
@@ -194,11 +198,7 @@ impl OpenAiChatRequest {
     }
 }
 
-impl From<OpenAiContentObject> for ContentObject {
-    fn from(obj: OpenAiContentObject) -> Self {
-        ContentObject::new(obj.content_type, obj.text)
-    }
-}
+
 
 // A new struct for serializing tool output
 #[derive(Serialize)]
