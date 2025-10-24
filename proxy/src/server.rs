@@ -1,6 +1,10 @@
 use crate::{
-    error::CustomError, streaming::CompletionStream, types::OpenAiChatMessage,
-    types::OpenAiChatRequest,
+    error::CustomError,
+    streaming::CompletionStream,
+    types::{
+        OpenAiChatChoice, OpenAiChatMessage, OpenAiChatRequest, OpenAiChatResponse,
+        StraicoChatResponse,
+    },
 };
 use actix_web::{post, web, HttpResponse};
 use bytes::Bytes;
@@ -58,10 +62,7 @@ pub async fn openai_chat_completion(
         }
     }
 
-    let response =
-        serde_json::from_slice::<straico_client::endpoints::chat::chat_response::ChatResponse>(
-            &response_bytes,
-        )
+    let response = serde_json::from_slice::<StraicoChatResponse>(&response_bytes)
         .map_err(|e| CustomError::SerdeJson(e))?;
 
     if openai_request.stream {
@@ -79,20 +80,36 @@ pub async fn openai_chat_completion(
             .content_type("text/event-stream")
             .streaming(stream))
     } else {
-        Ok(HttpResponse::Ok().json(response))
+        let openai_response = OpenAiChatResponse {
+            id: response.response.id,
+            object: response.response.object,
+            created: response.response.created,
+            model: response.response.model,
+            choices: response
+                .response
+                .choices
+                .into_iter()
+                .map(|choice| OpenAiChatChoice {
+                    index: choice.index,
+                    message: OpenAiChatMessage::from(choice.message),
+                    finish_reason: choice.finish_reason,
+                    logprobs: None,
+                })
+                .collect(),
+            usage: response.response.usage,
+        };
+        Ok(HttpResponse::Ok().json(openai_response))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{
-        ChatContent, OpenAiChatMessage, ToolCall
-    };
-    use straico_client::endpoints::chat::common_types::ChatFunctionCall;
+    use crate::types::{ChatContent, OpenAiChatMessage, ToolCall};
     use actix_web::{test, web, App};
-    use straico_client::endpoints::chat::chat_response::{
-        ChatChoice, ChatResponse, Message,
+    use straico_client::endpoints::chat::common_types::ChatFunctionCall;
+    use straico_client::endpoints::chat::{
+        ChatChoice, Message, StraicoChatResponse,
     };
     use wiremock::{
         matchers::{method, path},
@@ -103,21 +120,23 @@ mod tests {
     async fn test_openai_chat_completion_streaming() {
         // Arrange
         let server = MockServer::start().await;
-        let mock_response = ChatResponse {
-            id: "chatcmpl-123".to_string(),
-            model: "gpt-3.5-turbo-0125".to_string(),
-            object: "chat.completion".to_string(),
-            created: 1677652288,
-            choices: vec![ChatChoice {
-                index: 0,
-                message: Message {
-                    role: "assistant".to_string(),
-                    content: Some(ChatContent::String("Hello there!".to_string())),
-                    tool_calls: None,
-                },
-                finish_reason: "stop".to_string(),
-            }],
-            usage: Default::default(),
+        let mock_response = StraicoChatResponse {
+            response: straico_client::endpoints::chat::ChatResponse {
+                id: "chatcmpl-123".to_string(),
+                model: "gpt-3.5-turbo-0125".to_string(),
+                object: "chat.completion".to_string(),
+                created: 1677652288,
+                choices: vec![ChatChoice {
+                    index: 0,
+                    message: Message {
+                        role: "assistant".to_string(),
+                        content: Some(ChatContent::String("Hello there!".to_string())),
+                        tool_calls: None,
+                    },
+                    finish_reason: "stop".to_string(),
+                }],
+                usage: Default::default(),
+            },
             price: Default::default(),
             words: Default::default(),
         };
@@ -175,7 +194,8 @@ mod tests {
         let first_chunk_json: serde_json::Value =
             serde_json::from_str(&first_line["data: ".len()..]).unwrap();
         assert_eq!(
-            first_chunk_json["choices"][0]["delta"]["role"], "assistant"
+            first_chunk_json["choices"][0]["delta"]["role"],
+            "assistant"
         );
         assert!(first_chunk_json["choices"][0]["delta"]["content"].is_null());
 
@@ -185,7 +205,8 @@ mod tests {
             serde_json::from_str(&second_line["data: ".len()..]).unwrap();
         assert!(second_chunk_json["choices"][0]["delta"]["role"].is_null());
         assert_eq!(
-            second_chunk_json["choices"][0]["delta"]["content"], "Hello there!"
+            second_chunk_json["choices"][0]["delta"]["content"],
+            "Hello there!"
         );
 
         assert_eq!(lines.next().unwrap(), "data: [DONE]");
@@ -195,21 +216,23 @@ mod tests {
     async fn test_openai_chat_completion_with_tool_calls() {
         // Arrange
         let server = MockServer::start().await;
-        let mock_response = ChatResponse {
-            id: "chatcmpl-123".to_string(),
-            model: "gpt-3.5-turbo-0125".to_string(),
-            object: "chat.completion".to_string(),
-            created: 1677652288,
-            choices: vec![ChatChoice {
-                index: 0,
-                message: Message {
-                    role: "assistant".to_string(),
-                    content: Some(ChatContent::String("Hello there!".to_string())),
-                    tool_calls: None,
-                },
-                finish_reason: "stop".to_string(),
-            }],
-            usage: Default::default(),
+        let mock_response = StraicoChatResponse {
+            response: straico_client::endpoints::chat::ChatResponse {
+                id: "chatcmpl-123".to_string(),
+                model: "gpt-3.5-turbo-0125".to_string(),
+                object: "chat.completion".to_string(),
+                created: 1677652288,
+                choices: vec![ChatChoice {
+                    index: 0,
+                    message: Message {
+                        role: "assistant".to_string(),
+                        content: Some(ChatContent::String("Hello there!".to_string())),
+                        tool_calls: None,
+                    },
+                    finish_reason: "stop".to_string(),
+                }],
+                usage: Default::default(),
+            },
             price: Default::default(),
             words: Default::default(),
         };
@@ -296,21 +319,23 @@ mod tests {
     async fn test_openai_chat_completion_with_tool_role() {
         // Arrange
         let server = MockServer::start().await;
-        let mock_response = ChatResponse {
-            id: "chatcmpl-123".to_string(),
-            model: "gpt-3.5-turbo-0125".to_string(),
-            object: "chat.completion".to_string(),
-            created: 1677652288,
-            choices: vec![ChatChoice {
-                index: 0,
-                message: Message {
-                    role: "assistant".to_string(),
-                    content: Some(ChatContent::String("Hello there!".to_string())),
-                    tool_calls: None,
-                },
-                finish_reason: "stop".to_string(),
-            }],
-            usage: Default::default(),
+        let mock_response = StraicoChatResponse {
+            response: straico_client::endpoints::chat::ChatResponse {
+                id: "chatcmpl-123".to_string(),
+                model: "gpt-3.5-turbo-0125".to_string(),
+                object: "chat.completion".to_string(),
+                created: 1677652288,
+                choices: vec![ChatChoice {
+                    index: 0,
+                    message: Message {
+                        role: "assistant".to_string(),
+                        content: Some(ChatContent::String("Hello there!".to_string())),
+                        tool_calls: None,
+                    },
+                    finish_reason: "stop".to_string(),
+                }],
+                usage: Default::default(),
+            },
             price: Default::default(),
             words: Default::default(),
         };

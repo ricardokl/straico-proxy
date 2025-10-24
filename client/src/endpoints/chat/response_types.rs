@@ -1,12 +1,16 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::common_types::OpenAiChatMessage;
+use super::common_types::{OpenAiChatMessage, ToolCall};
+use crate::endpoints::chat::ChatContent;
 
-/// OpenAI chat completion response.
+/// Generic chat completion response structure.
 ///
-/// This structure represents the response returned to OpenAI-compatible clients.
-/// It follows the OpenAI API specification for chat completion responses.
+/// This structure can be used for both OpenAI-compatible and Straico-specific
+/// responses by parameterizing the type of `choices`.
+///
+/// # Type Parameters
+/// * `T` - The type of the items in the `choices` vector.
 ///
 /// # Fields
 /// * `id` - Unique identifier for the completion
@@ -16,7 +20,7 @@ use super::common_types::OpenAiChatMessage;
 /// * `choices` - Array of completion choices
 /// * `usage` - Token usage statistics
 #[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct OpenAiChatResponse {
+pub struct ChatResponse<T> {
     /// Unique identifier for the completion
     pub id: String,
     /// The type of object (typically "chat.completion")
@@ -26,13 +30,70 @@ pub struct OpenAiChatResponse {
     /// The model used for the completion
     pub model: String,
     /// Array of completion choices
-    pub choices: Vec<OpenAiChatChoice>,
+    pub choices: Vec<T>,
     /// Token usage statistics
     pub usage: Usage,
 }
 
-/// Represents a single choice in the OpenAI chat completion response.
+/// Straico-specific chat completion response.
 ///
+/// This structure extends the generic `ChatResponse` with additional fields
+/// specific to the Straico API, such as `price` and `words` breakdowns.
+///
+/// # Fields
+/// This struct flattens all fields from `ChatResponse<ChatChoice>` and adds:
+/// * `price` - Price breakdown for the completion
+/// * `words` - Word count breakdown
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct StraicoChatResponse {
+    /// Flattened fields from the generic ChatResponse
+    #[serde(flatten)]
+    pub response: ChatResponse<ChatChoice>,
+    /// Price breakdown for the completion
+    pub price: MetricBreakdown,
+    /// Word count breakdown
+    pub words: MetricBreakdown,
+}
+
+/// Type alias for an OpenAI-compatible chat completion response.
+///
+/// This uses the generic `ChatResponse` with `OpenAiChatChoice` as the choice type.
+pub type OpenAiChatResponse = ChatResponse<OpenAiChatChoice>;
+
+/// Represents a single choice in the Straico chat completion response.
+///
+/// # Fields
+/// * `message` - The generated response message
+/// * `finish_reason` - Why the model stopped generating (e.g., "stop", "length", "tool_calls")
+/// * `index` - Zero-based position of this choice in the list of responses
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ChatChoice {
+    /// The generated response message
+    pub message: Message,
+    /// Reason why the model stopped generating
+    pub finish_reason: String,
+    /// Zero-based position of this choice in the list of responses
+    pub index: u8,
+}
+
+/// Represents a message in the Straico chat response.
+///
+/// # Fields
+/// * `role` - The role of the message sender (typically "assistant")
+/// * `content` - The message content (may be string or structured)
+/// * `tool_calls` - Optional tool calls made by the assistant
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct Message {
+    /// The role of the message sender
+    pub role: String,
+    /// The message content
+    pub content: Option<ChatContent>,
+    /// Optional tool calls made by the assistant
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_calls: Option<Vec<ToolCall>>,
+}
+
+/// Represents a single choice in the OpenAI chat completion response.
 /// Each choice contains a message and metadata about the completion.
 ///
 /// # Fields
@@ -92,4 +153,68 @@ pub struct MetricBreakdown {
     pub output: f64,
     /// Total combined metric
     pub total: f64,
+}
+
+impl From<Message> for OpenAiChatMessage {
+    fn from(value: Message) -> Self {
+        OpenAiChatMessage::Assistant {
+            content: value.content,
+            tool_calls: value.tool_calls,
+        }
+    }
+}
+
+impl StraicoChatResponse {
+    /// Gets the first choice from the response.
+    ///
+    /// # Returns
+    /// An Option containing the first ChatChoice, or None if no choices exist
+    pub fn first_choice(&self) -> Option<&ChatChoice> {
+        self.response.choices.first()
+    }
+
+    /// Gets the content of the first choice as a string.
+    ///
+    /// # Returns
+    /// An Option containing the content string, or None if no content exists
+    pub fn first_content(&self) -> Option<String> {
+        self.first_choice()
+            .and_then(|choice| choice.message.content.as_ref())
+            .map(|content| content.to_string())
+    }
+
+    /// Checks if the response contains tool calls.
+    ///
+    /// # Returns
+    /// True if any choice contains tool calls, false otherwise
+    pub fn has_tool_calls(&self) -> bool {
+        self.response.choices.iter().any(|choice| {
+            choice
+                .message
+                .tool_calls
+                .as_ref()
+                .is_some_and(|calls| !calls.is_empty())
+        })
+    }
+}
+
+impl ChatChoice {
+    /// Checks if this choice finished due to tool calls.
+    ///
+    /// # Returns
+    /// True if the finish reason is "tool_calls"
+    pub fn finished_with_tool_calls(&self) -> bool {
+        self.finish_reason == "tool_calls"
+    }
+
+    /// Gets the content as a string if available.
+    ///
+    /// # Returns
+    /// An Option containing the content string, or None if no content exists
+    pub fn content_string(&self) -> Option<String> {
+        self.message
+            .content
+            .as_ref()
+            .map(|content| content.to_string())
+    }
 }
