@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::ops::Deref;
 
-pub use crate::endpoints::chat::chat_response::{Message, ToolCall};
+pub use crate::endpoints::chat::chat_response::Message;
+pub use crate::endpoints::chat::common_types::ToolCall;
 
 /// Represents a chat conversation as a sequence of messages.
 ///

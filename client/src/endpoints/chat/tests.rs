@@ -2,7 +2,7 @@
 mod tests {
 
     use crate::endpoints::chat::{
-        ChatChoice, ChatMessage, ChatRequest, ChatResponse, ChatResponseContent,
+        ChatChoice, ChatContent, ChatMessage, ChatRequest, ChatResponse,
         ContentObject, Message, MetricBreakdown, Usage,
     };
 
@@ -150,19 +150,15 @@ mod tests {
 
     #[test]
     fn test_chat_response_content_methods() {
-        let text_content = ChatResponseContent::Text("Hello".to_string());
+        let text_content = ChatContent::String("Hello".to_string());
         assert_eq!(text_content.to_string(), "Hello");
-        assert!(!text_content.is_empty());
 
-        let empty_content = ChatResponseContent::Text("".to_string());
-        assert!(empty_content.is_empty());
-
-        let array_content = ChatResponseContent::Array(vec![
-            crate::endpoints::chat::ChatContentObject {
+        let array_content = ChatContent::Array(vec![
+            crate::endpoints::chat::ContentObject {
                 content_type: "text".to_string(),
                 text: "Hello ".to_string(),
             },
-            crate::endpoints::chat::ChatContentObject {
+            crate::endpoints::chat::ContentObject {
                 content_type: "text".to_string(),
                 text: "world".to_string(),
             },
@@ -193,7 +189,7 @@ mod tests {
         ChatChoice {
             message: Message {
                 role: "assistant".to_string(),
-                content: Some(ChatResponseContent::Text(
+                content: Some(ChatContent::String(
                     "Test response content".to_string(),
                 )),
                 tool_calls: None,

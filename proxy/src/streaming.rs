@@ -4,8 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(test))]
 use straico_client::endpoints::chat::Usage;
 use straico_client::endpoints::chat::chat_response::{
-    ChatChoice as Choice, ChatResponse as Completion, Message, ToolCall,
+    ChatChoice as Choice, ChatResponse as Completion, Message,
 };
+use straico_client::endpoints::chat::common_types::ToolCall;
 
 #[derive(Serialize, Debug, Clone)]
 pub struct CompletionStream {
