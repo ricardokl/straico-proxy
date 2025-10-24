@@ -1,6 +1,6 @@
 pub mod chat;
 
-use crate::endpoints::chat::chat_response::ChatResponse;
+use crate::endpoints::chat::response_types::StraicoChatResponse;
 use serde::{Deserialize, Serialize};
 
 /// Generic response wrapper for Straico API responses
@@ -11,7 +11,7 @@ pub struct ApiResponseData {
 
 impl ApiResponseData {
     /// Attempts to parse the response data as chat response data
-    pub fn get_chat_response(self) -> Result<ChatResponse, serde_json::Error> {
+    pub fn get_chat_response(self) -> Result<StraicoChatResponse, serde_json::Error> {
         serde_json::from_value(self.data)
     }
 }

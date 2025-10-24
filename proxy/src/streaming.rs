@@ -3,8 +3,9 @@ use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(test))]
 use straico_client::endpoints::chat::Usage;
-use straico_client::endpoints::chat::chat_response::{
-    ChatChoice as Choice, ChatResponse as Completion, Message,
+
+use straico_client::endpoints::chat::response_types::{
+    ChatChoice as Choice, Message, StraicoChatResponse as Completion,
 };
 use straico_client::endpoints::chat::common_types::ToolCall;
 
@@ -257,13 +258,13 @@ impl From<Choice> for ChoiceStream {
 impl From<Completion> for CompletionStream {
     fn from(value: Completion) -> Self {
         Self {
-            choices: value.choices.into_iter().map(Into::into).collect(),
-            object: value.object.into(),
-            id: value.id.into(),
-            model: value.model.into(),
-            created: value.created,
+            choices: value.response.choices.into_iter().map(Into::into).collect(),
+            object: value.response.object.into(),
+            id: value.response.id.into(),
+            model: value.response.model.into(),
+            created: value.response.created,
             #[cfg(not(test))]
-            usage: value.usage,
+            usage: value.response.usage,
             #[cfg(test)]
             usage: (),
         }
