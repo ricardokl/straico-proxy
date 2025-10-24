@@ -2,7 +2,7 @@
 mod tests {
 
     use crate::endpoints::chat::{
-        ChatChoice, ChatContent, ChatMessage, ChatRequest, ChatResponse, ContentObject, Message,
+        ChatChoice, ChatContent, ChatMessage, ChatRequest, ChatResponse, ContentObject,
         MetricBreakdown, StraicoChatResponse, Usage,
     };
 
@@ -189,12 +189,8 @@ mod tests {
 
     fn create_test_chat_choice() -> ChatChoice {
         ChatChoice {
-            message: Message {
-                role: "assistant".to_string(),
-                content: Some(ChatContent::String(
-                    "Test response content".to_string(),
-                )),
-                tool_calls: None,
+            message: ChatMessage::Assistant {
+                content: ChatContent::String("Test response content".to_string()),
             },
             finish_reason: "stop".to_string(),
             index: 0,

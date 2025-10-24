@@ -6,7 +6,7 @@ pub mod error;
 // Re-export commonly used types
 pub use client::{StraicoClient, StraicoRequestBuilder};
 pub use endpoints::chat::{
-    ChatChoice, ChatContent, ChatMessage, ChatRequest, ContentObject, Message, MetricBreakdown,
+    ChatChoice, ChatContent, ChatMessage, ChatRequest, ContentObject, MetricBreakdown,
     OpenAiChatChoice, OpenAiChatMessage, OpenAiChatRequest, OpenAiChatResponse,
     OpenAiConversionError, StraicoChatResponse,
 };

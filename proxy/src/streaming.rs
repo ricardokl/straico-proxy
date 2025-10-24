@@ -4,11 +4,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(test))]
 use straico_client::endpoints::chat::Usage;
 
+use once_cell::sync::Lazy;
+use regex::Regex;
+use straico_client::endpoints::chat::common_types::{ChatMessage, ToolCall};
 use straico_client::endpoints::chat::response_types::{
-    ChatChoice as Choice, Message, StraicoChatResponse as Completion,
+    ChatChoice as Choice, StraicoChatResponse as Completion,
 };
-use straico_client::endpoints::chat::common_types::ToolCall;
 
+static TOOL_CALLS_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"<tool_calls>(.*)</tool_calls>").unwrap());
 #[derive(Serialize, Debug, Clone)]
 pub struct CompletionStream {
     pub choices: Vec<ChoiceStream>,
@@ -235,12 +239,30 @@ impl Iterator for CompletionStreamIterator {
     }
 }
 
-impl From<Message> for Delta {
-    fn from(value: Message) -> Self {
-        Delta {
-            role: Some(value.role.into()),
-            content: value.content.map(|c| c.to_string().into()),
-            tool_calls: value.tool_calls,
+
+impl From<ChatMessage> for Delta {
+    fn from(value: ChatMessage) -> Self {
+        match value {
+            ChatMessage::Assistant { content, .. } => {
+                let content_str = content.to_string();
+                if let Some(captures) = TOOL_CALLS_REGEX.captures(&content_str) {
+                    if let Some(match_str) = captures.get(1) {
+                        if let Ok(tool_calls) = serde_json::from_str(match_str.as_str()) {
+                            return Self {
+                                role: Some("assistant".into()),
+                                content: None,
+                                tool_calls: Some(tool_calls),
+                            };
+                        }
+                    }
+                }
+                Self {
+                    role: Some("assistant".into()),
+                    content: Some(content_str.into()),
+                    tool_calls: None,
+                }
+            }
+            _ => Self::default(),
         }
     }
 }

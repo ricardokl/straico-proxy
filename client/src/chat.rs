@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
+use crate::endpoints::chat::ChatMessage;
 use serde_json::Value;
 use std::ops::Deref;
 
-pub use crate::endpoints::chat::response_types::Message;
 pub use crate::endpoints::chat::common_types::ToolCall;
 
 /// Represents a chat conversation as a sequence of messages.
@@ -14,20 +14,20 @@ pub use crate::endpoints::chat::common_types::ToolCall;
 /// This struct implements `Deref` to provide direct access to the underlying vector
 /// operations while maintaining type safety and encapsulation.
 #[derive(Deserialize, Clone, Debug)]
-pub struct Chat(pub Vec<Message>);
+pub struct Chat(pub Vec<ChatMessage>);
 
 impl Chat {
-    pub fn new(messages: Vec<Message>) -> Self {
+    pub fn new(messages: Vec<ChatMessage>) -> Self {
         Self(messages)
     }
 }
 
 impl Deref for Chat {
-    type Target = Vec<Message>;
+    type Target = Vec<ChatMessage>;
 
     /// Implements `Deref` for `Chat` to provide direct access to the underlying vector.
     ///
-    /// This method returns a reference to the inner `Vec<Message>` stored in the `Chat`
+    /// This method returns a reference to the inner `Vec<ChatMessage>` stored in the `Chat`
     /// struct, allowing direct access to vector operations while maintaining
     /// encapsulation.
     ///

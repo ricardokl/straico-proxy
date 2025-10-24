@@ -1,8 +1,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::common_types::{OpenAiChatMessage, ToolCall};
-use crate::endpoints::chat::ChatContent;
+use super::common_types::{ChatMessage, OpenAiChatMessage, ToolCall};
+use once_cell::sync::Lazy;
+use regex::Regex;
+
+static TOOL_CALLS_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"<tool_calls>(.*)</tool_calls>").unwrap());
 
 /// Generic chat completion response structure.
 ///
@@ -69,29 +73,13 @@ pub type OpenAiChatResponse = ChatResponse<OpenAiChatChoice>;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ChatChoice {
     /// The generated response message
-    pub message: Message,
+    pub message: ChatMessage,
     /// Reason why the model stopped generating
     pub finish_reason: String,
     /// Zero-based position of this choice in the list of responses
     pub index: u8,
 }
 
-/// Represents a message in the Straico chat response.
-///
-/// # Fields
-/// * `role` - The role of the message sender (typically "assistant")
-/// * `content` - The message content (may be string or structured)
-/// * `tool_calls` - Optional tool calls made by the assistant
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct Message {
-    /// The role of the message sender
-    pub role: String,
-    /// The message content
-    pub content: Option<ChatContent>,
-    /// Optional tool calls made by the assistant
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_calls: Option<Vec<ToolCall>>,
-}
 
 /// Represents a single choice in the OpenAI chat completion response.
 /// Each choice contains a message and metadata about the completion.
@@ -155,14 +143,6 @@ pub struct MetricBreakdown {
     pub total: f64,
 }
 
-impl From<Message> for OpenAiChatMessage {
-    fn from(value: Message) -> Self {
-        OpenAiChatMessage::Assistant {
-            content: value.content,
-            tool_calls: value.tool_calls,
-        }
-    }
-}
 
 impl StraicoChatResponse {
     /// Gets the first choice from the response.
@@ -178,9 +158,12 @@ impl StraicoChatResponse {
     /// # Returns
     /// An Option containing the content string, or None if no content exists
     pub fn first_content(&self) -> Option<String> {
-        self.first_choice()
-            .and_then(|choice| choice.message.content.as_ref())
-            .map(|content| content.to_string())
+        self.first_choice().and_then(|choice| {
+            if let ChatMessage::Assistant { content, .. } = &choice.message {
+                return Some(content.to_string());
+            }
+            None
+        })
     }
 
     /// Checks if the response contains tool calls.
@@ -188,13 +171,10 @@ impl StraicoChatResponse {
     /// # Returns
     /// True if any choice contains tool calls, false otherwise
     pub fn has_tool_calls(&self) -> bool {
-        self.response.choices.iter().any(|choice| {
-            choice
-                .message
-                .tool_calls
-                .as_ref()
-                .is_some_and(|calls| !calls.is_empty())
-        })
+        self.response
+            .choices
+            .iter()
+            .any(|choice| choice.tool_calls().map_or(false, |calls| !calls.is_empty()))
     }
 }
 
@@ -212,9 +192,27 @@ impl ChatChoice {
     /// # Returns
     /// An Option containing the content string, or None if no content exists
     pub fn content_string(&self) -> Option<String> {
-        self.message
-            .content
-            .as_ref()
-            .map(|content| content.to_string())
+        if let ChatMessage::Assistant { content, .. } = &self.message {
+            return Some(content.to_string());
+        }
+        None
+    }
+
+    /// Gets the tool calls if available.
+    ///
+    /// # Returns
+    /// An Option containing a slice of tool calls, or None if not available
+    pub fn tool_calls(&self) -> Option<Vec<ToolCall>> {
+        if let ChatMessage::Assistant { content, .. } = &self.message {
+            let content_str = content.to_string();
+            if let Some(captures) = TOOL_CALLS_REGEX.captures(&content_str) {
+                if let Some(match_str) = captures.get(1) {
+                    if let Ok(tool_calls) = serde_json::from_str(match_str.as_str()) {
+                        return Some(tool_calls);
+                    }
+                }
+            }
+        }
+        None
     }
 }
