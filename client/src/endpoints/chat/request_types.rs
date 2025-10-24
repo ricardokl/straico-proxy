@@ -14,12 +14,12 @@ use super::{ChatContent, ContentObject};
 /// * `messages` - Array of chat messages with structured content
 /// * `temperature` - Optional parameter controlling randomness in generation (0.0 to 2.0)
 /// * `max_tokens` - Optional maximum number of tokens to generate
-#[derive(Serialize, Debug, Clone, Default)]
-pub struct ChatRequest {
+#[derive(Deserialize, Serialize, Debug, Clone, Default)]
+pub struct ChatRequest<T> {
     /// The language model to use for generating the chat completion
     pub model: String,
     /// Array of messages forming the conversation context
-    pub messages: Vec<ChatMessage>,
+    pub messages: Vec<T>,
     /// Optional parameter controlling randomness in generation (0.0 to 2.0)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
@@ -28,7 +28,7 @@ pub struct ChatRequest {
     pub max_tokens: Option<u32>,
 }
 
-impl ChatRequest {
+impl ChatRequest<ChatMessage> {
     /// Creates a new ChatRequest builder.
     ///
     /// # Returns
@@ -86,17 +86,9 @@ pub struct OpenAiNamedToolChoice {
 /// This structure handles incoming OpenAI-compatible requests that need to be
 /// converted to the new Straico chat format.
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct OpenAiChatRequest {
-    /// The model identifier to use for completion
-    pub model: String,
-    /// Array of chat messages in OpenAI format
-    pub messages: Vec<OpenAiChatMessage>,
-    /// Optional temperature parameter (0.0 to 2.0)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f32>,
-    /// Optional maximum number of tokens to generate
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
+pub struct OpenAiChatRequest<T> {
+    #[serde(flatten)]
+    pub chat_request: ChatRequest<T>,
     /// Optional maximum number of completion tokens (alias for max_tokens)
     #[serde(alias = "max_completion_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -150,7 +142,7 @@ impl std::fmt::Display for OpenAiConversionError {
 
 impl std::error::Error for OpenAiConversionError {}
 
-impl OpenAiChatRequest {
+impl OpenAiChatRequest<OpenAiChatMessage> {
     /// Converts OpenAI chat request to Straico ChatRequest format.
     ///
     /// This function now handles both regular chat requests and those with tools,
@@ -162,9 +154,13 @@ impl OpenAiChatRequest {
     ///
     /// # Errors
     /// Returns an error if tool embedding fails (e.g., no user message to embed into).
-    pub fn to_straico_request(&mut self) -> Result<ChatRequest, OpenAiConversionError> {
-        let mut messages: Vec<ChatMessage> =
-            self.messages.drain(..).map(|msg| msg.into()).collect();
+    pub fn to_straico_request(&mut self) -> Result<ChatRequest<ChatMessage>, OpenAiConversionError> {
+        let mut messages: Vec<ChatMessage> = self
+            .chat_request
+            .messages
+            .drain(..)
+            .map(|msg| msg.into())
+            .collect();
 
         if let Some(tools) = self.tools.take() {
             if !tools.is_empty() {
@@ -177,20 +173,22 @@ impl OpenAiChatRequest {
                     }
                 }
 
-                let tool_xml = generate_tool_xml(&tools, &self.model);
+                let tool_xml = generate_tool_xml(&tools, &self.chat_request.model);
                 let system_message = ChatMessage::system(tool_xml);
                 messages.insert(0, system_message);
             }
         }
 
-        let mut builder = ChatRequest::builder().model(&self.model).messages(messages);
+        let mut builder = ChatRequest::builder()
+            .model(&self.chat_request.model)
+            .messages(messages);
 
-        let max_tokens = self.max_tokens.or(self.max_completion_tokens);
+        let max_tokens = self.chat_request.max_tokens.or(self.max_completion_tokens);
         if let Some(tokens) = max_tokens {
             builder = builder.max_tokens(tokens);
         }
 
-        if let Some(temp) = self.temperature {
+        if let Some(temp) = self.chat_request.temperature {
             builder = builder.temperature(temp);
         }
 
