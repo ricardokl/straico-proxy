@@ -86,7 +86,7 @@ pub async fn openai_chat_completion(
 mod tests {
     use super::*;
     use crate::types::{
-        OpenAiChatMessage, OpenAiContent, OpenAiFunctionCall, OpenAiToolCall,
+        ChatContent, OpenAiChatMessage, OpenAiToolCall, ChatFunctionCall
     };
     use actix_web::{test, web, App};
     use straico_client::endpoints::chat::chat_response::{
@@ -144,7 +144,7 @@ mod tests {
             model: "gpt-3.5-turbo".to_string(),
             messages: vec![OpenAiChatMessage {
                 role: "user".to_string(),
-                content: Some(OpenAiContent::String("Hello".to_string())),
+                content: Some(ChatContent::String("Hello".to_string())),
                 tool_call_id: None,
                 name: None,
                 tool_calls: None,
@@ -244,7 +244,7 @@ mod tests {
                 tool_calls: Some(vec![OpenAiToolCall {
                     id: "call_123".to_string(),
                     tool_type: "function".to_string(),
-                    function: OpenAiFunctionCall {
+                    function: ChatFunctionCall {
                         name: "get_weather".to_string(),
                         arguments: "{\"location\": \"London\"}".to_string(),
                     },
@@ -339,7 +339,7 @@ mod tests {
             model: "gpt-3.5-turbo".to_string(),
             messages: vec![OpenAiChatMessage {
                 role: "tool".to_string(),
-                content: Some(OpenAiContent::String("{\"result\": \"success\"}".to_string())),
+                content: Some(ChatContent::String("{\"result\": \"success\"}".to_string())),
                 tool_call_id: Some("call_123".to_string()),
                 name: None,
                 tool_calls: None,

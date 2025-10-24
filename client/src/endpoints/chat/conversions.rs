@@ -1,27 +1,9 @@
 use super::{
-    ChatMessage, ChatRequest, ChatResponseContent, ContentObject,
-    chat_request::{ContentObject as RequestContentObject, ChatContent},
-    chat_response::ChatContentObject as ResponseContentObject,
+    ChatMessage, ChatRequest, ChatContent, ContentObject,
 };
 use crate::chat::{Chat, Message, Tool};
 
-impl From<RequestContentObject> for ResponseContentObject {
-    fn from(obj: RequestContentObject) -> Self {
-        ResponseContentObject {
-            content_type: obj.content_type,
-            text: obj.text,
-        }
-    }
-}
 
-impl From<ResponseContentObject> for RequestContentObject {
-    fn from(obj: ResponseContentObject) -> Self {
-        RequestContentObject {
-            content_type: obj.content_type,
-            text: obj.text,
-        }
-    }
-}
 
 /// Conversion utilities for the new chat endpoint format.
 ///
@@ -32,7 +14,7 @@ impl From<ResponseContentObject> for RequestContentObject {
 /// Instead, we provide utility functions for these conversions
 impl From<Message> for ChatMessage {
     fn from(message: Message) -> Self {
-        let content_vec: Vec<RequestContentObject> = message.content.map_or(vec![], |c| c.into());
+        let content_vec: Vec<ContentObject> = message.content.map_or(vec![], |c| c.into_content_objects());
         let content = if content_vec.is_empty() {
             ChatContent::String(String::new())
         } else {
@@ -46,14 +28,7 @@ impl From<Message> for ChatMessage {
     }
 }
 
-impl From<ChatResponseContent> for Vec<RequestContentObject> {
-    fn from(content: ChatResponseContent) -> Self {
-        match content {
-            ChatResponseContent::Text(text) => vec![RequestContentObject::text(text)],
-            ChatResponseContent::Array(objects) => objects.into_iter().map(|o| o.into()).collect(),
-        }
-    }
-}
+
 
 /// Builder for creating ChatRequest instances with OpenAI compatibility.
 pub struct OpenAiChatRequestBuilder {

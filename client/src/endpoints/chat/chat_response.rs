@@ -1,17 +1,18 @@
 use serde::{Deserialize, Serialize};
 
-/// Response structure for the new Straico chat endpoint.
+use super::{ChatContent, MetricBreakdown, Usage, response_types::ChatFunctionCall};
+
+/// Response structure for the Straico chat endpoint.
 ///
 /// This struct represents the response from the `/v0/chat/completions` endpoint.
 ///
 /// # Fields
 /// * `id` - Unique identifier for this completion
-/// * `provider` - The provider name
 /// * `model` - The model that generated the response
 /// * `object` - The type of object (e.g., "chat.completion")
 /// * `created` - Unix timestamp of when this completion was created
 /// * `choices` - Array of generated response choices
-/// * `usage` - Optional token usage statistics
+/// * `usage` - Token usage statistics
 /// * `price` - Price breakdown for the completion
 /// * `words` - Word count breakdown
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -26,8 +27,8 @@ pub struct ChatResponse {
     pub created: u64,
     /// Array of generated response choices
     pub choices: Vec<ChatChoice>,
-    /// Optional token usage statistics
-    pub usage: ChatUsage,
+    /// Token usage statistics
+    pub usage: Usage,
     /// Price breakdown for the completion
     pub price: MetricBreakdown,
     /// Word count breakdown
@@ -74,43 +75,10 @@ pub struct Message {
     /// The role of the message sender
     pub role: String,
     /// The message content
-    pub content: Option<ChatResponseContent>,
+    pub content: Option<ChatContent>,
     /// Optional tool calls made by the assistant
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
-}
-
-/// Represents the content of a chat response message.
-///
-/// This enum handles different content formats that the new chat endpoint
-/// might return - either simple text or structured content arrays.
-///
-/// # Variants
-/// * `Text` - Simple text content
-/// * `Array` - Array of structured content objects
-#[derive(Deserialize, Serialize, Debug, Clone)]
-#[serde(untagged)]
-pub enum ChatResponseContent {
-    /// Simple text content
-    Text(String),
-    /// Array of structured content objects
-    Array(Vec<ChatContentObject>),
-}
-
-/// Represents a structured content object in the response.
-///
-/// Similar to the request content objects, but for responses.
-///
-/// # Fields
-/// * `content_type` - The type of content (typically "text")
-/// * `text` - The actual text content
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct ChatContentObject {
-    /// The type of content object
-    #[serde(rename = "type")]
-    pub content_type: String,
-    /// The text content
-    pub text: String,
 }
 
 /// Represents a tool call in the chat response.
@@ -132,57 +100,6 @@ pub struct ToolCall {
     #[serde(rename = "type")]
     pub tool_type: String,
 }
-
-/// Represents the details of a function call in the response.
-///
-/// # Fields
-/// * `name` - The name of the function called
-/// * `arguments` - The function arguments as a JSON string
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct ChatFunctionCall {
-    /// The name of the function called
-    pub name: String,
-    /// The function arguments as a JSON string
-    pub arguments: String,
-}
-
-/// Token usage statistics for the chat completion.
-///
-/// This structure tracks token consumption for billing and monitoring purposes.
-///
-/// # Fields
-/// * `prompt_tokens` - Number of tokens in the input/prompt
-/// * `completion_tokens` - Number of tokens in the generated completion
-/// * `total_tokens` - Total combined token count
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
-pub struct ChatUsage {
-    /// Number of tokens in the input/prompt
-    pub prompt_tokens: u32,
-    /// Number of tokens in the generated completion
-    pub completion_tokens: u32,
-    /// Total combined token count
-    pub total_tokens: u32,
-}
-
-/// Breakdown of metrics (price or word count) for input, output, and total.
-///
-/// Used for both price (as floats) and word counts (deserialized as floats but
-/// representing integers). Using f64 allows handling both use cases.
-///
-/// # Fields
-/// * `input` - Metric for the input/prompt
-/// * `output` - Metric for the generated output/completion
-/// * `total` - Total combined metric
-#[derive(Deserialize, Serialize, Debug, Clone, Default)]
-pub struct MetricBreakdown {
-    /// Metric for the input/prompt
-    pub input: f64,
-    /// Metric for the generated output/completion
-    pub output: f64,
-    /// Total combined metric
-    pub total: f64,
-}
-
 impl ChatResponse {
     /// Gets the first choice from the response.
     ///
@@ -199,7 +116,7 @@ impl ChatResponse {
     pub fn first_content(&self) -> Option<String> {
         self.first_choice()
             .and_then(|choice| choice.message.content.as_ref())
-            .map(|content| content.as_string())
+            .map(|content| content.to_string())
     }
 
     /// Checks if the response contains tool calls.
@@ -234,55 +151,6 @@ impl ChatChoice {
         self.message
             .content
             .as_ref()
-            .map(|content| content.as_string())
-    }
-}
-
-impl ChatResponseContent {
-    /// Converts the content to a string representation.
-    ///
-    /// # Returns
-    /// String representation of the content
-    pub fn as_string(&self) -> String {
-        match self {
-            ChatResponseContent::Text(text) => text.clone(),
-            ChatResponseContent::Array(objects) => objects
-                .iter()
-                .map(|obj| &obj.text)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(""),
-        }
-    }
-
-    /// Checks if the content is empty.
-    ///
-    /// # Returns
-    /// True if the content is empty or contains only empty text
-    pub fn is_empty(&self) -> bool {
-        match self {
-            ChatResponseContent::Text(text) => text.is_empty(),
-            ChatResponseContent::Array(objects) => {
-                objects.is_empty() || objects.iter().all(|obj| obj.text.is_empty())
-            }
-        }
-    }
-}
-
-impl std::fmt::Display for ChatResponseContent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.as_string())
-    }
-}
-
-impl From<String> for ChatResponseContent {
-    fn from(text: String) -> Self {
-        ChatResponseContent::Text(text)
-    }
-}
-
-impl From<Vec<ChatContentObject>> for ChatResponseContent {
-    fn from(objects: Vec<ChatContentObject>) -> Self {
-        ChatResponseContent::Array(objects)
+            .map(|content| content.to_string())
     }
 }
