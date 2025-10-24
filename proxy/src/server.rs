@@ -1,5 +1,6 @@
 use crate::{
-    error::CustomError, types::OpenAiChatRequest, streaming::CompletionStream,
+    error::CustomError, streaming::CompletionStream, types::OpenAiChatMessage,
+    types::OpenAiChatRequest,
 };
 use actix_web::{post, web, HttpResponse};
 use bytes::Bytes;
@@ -17,7 +18,7 @@ pub struct AppState {
 
 #[post("/v1/chat/completions")]
 pub async fn openai_chat_completion(
-    req: web::Json<OpenAiChatRequest>,
+    req: web::Json<OpenAiChatRequest<OpenAiChatMessage>>,
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, CustomError> {
     let mut openai_request = req.into_inner();
@@ -142,12 +143,14 @@ mod tests {
         )
         .await;
         let req_payload = OpenAiChatRequest {
-            model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage::User {
-                content: ChatContent::String("Hello".to_string()),
-            }],
-            temperature: None,
-            max_tokens: None,
+            chat_request: straico_client::endpoints::chat::ChatRequest {
+                model: "gpt-3.5-turbo".to_string(),
+                messages: vec![OpenAiChatMessage::User {
+                    content: ChatContent::String("Hello".to_string()),
+                }],
+                temperature: None,
+                max_tokens: None,
+            },
             max_completion_tokens: None,
             stream: true,
             tools: None,
@@ -232,20 +235,22 @@ mod tests {
         )
         .await;
         let req_payload = OpenAiChatRequest {
-            model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage::Assistant {
-                content: None,
-                tool_calls: Some(vec![ToolCall {
-                    id: "call_123".to_string(),
-                    tool_type: "function".to_string(),
-                    function: ChatFunctionCall {
-                        name: "get_weather".to_string(),
-                        arguments: "{\"location\": \"London\"}".to_string(),
-                    },
-                }]),
-            }],
-            temperature: None,
-            max_tokens: None,
+            chat_request: straico_client::endpoints::chat::ChatRequest {
+                model: "gpt-3.5-turbo".to_string(),
+                messages: vec![OpenAiChatMessage::Assistant {
+                    content: None,
+                    tool_calls: Some(vec![ToolCall {
+                        id: "call_123".to_string(),
+                        tool_type: "function".to_string(),
+                        function: ChatFunctionCall {
+                            name: "get_weather".to_string(),
+                            arguments: "{\"location\": \"London\"}".to_string(),
+                        },
+                    }]),
+                }],
+                temperature: None,
+                max_tokens: None,
+            },
             max_completion_tokens: None,
             stream: false,
             tools: None,
@@ -266,7 +271,7 @@ mod tests {
         let received_body: serde_json::Value =
             serde_json::from_slice(&received_request.body).unwrap();
 
-        let expected_tool_calls = match &req_payload.messages[0] {
+        let expected_tool_calls = match &req_payload.chat_request.messages[0] {
             OpenAiChatMessage::Assistant { tool_calls, .. } => {
                 serde_json::to_string(&tool_calls.clone().unwrap()).unwrap()
             }
@@ -331,13 +336,15 @@ mod tests {
         )
         .await;
         let req_payload = OpenAiChatRequest {
-            model: "gpt-3.5-turbo".to_string(),
-            messages: vec![OpenAiChatMessage::Tool {
-                content: ChatContent::String("{\"result\": \"success\"}".to_string()),
-                tool_call_id: "call_123".to_string(),
-            }],
-            temperature: None,
-            max_tokens: None,
+            chat_request: straico_client::endpoints::chat::ChatRequest {
+                model: "gpt-3.5-turbo".to_string(),
+                messages: vec![OpenAiChatMessage::Tool {
+                    content: ChatContent::String("{\"result\": \"success\"}".to_string()),
+                    tool_call_id: "call_123".to_string(),
+                }],
+                temperature: None,
+                max_tokens: None,
+            },
             max_completion_tokens: None,
             stream: false,
             tools: None,

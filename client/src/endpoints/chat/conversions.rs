@@ -92,7 +92,7 @@ impl OpenAiChatRequestBuilder {
     ///
     /// Note: Tools are not yet embedded in the new format.
     /// This will be implemented in Phase 2.
-    pub fn build(self) -> ChatRequest {
+    pub fn build(self) -> ChatRequest<ChatMessage> {
         ChatRequest {
             model: self.model.expect("Model must be set"),
             messages: self.messages,

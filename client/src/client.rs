@@ -2,7 +2,7 @@ use reqwest::{Client, RequestBuilder};
 use serde::Serialize;
 use std::{fmt::Display, marker::PhantomData};
 
-use crate::endpoints::chat::ChatRequest;
+use crate::endpoints::chat::{ChatMessage, ChatRequest};
 
 /// Represents the state where no API key has been set for the request
 pub struct NoApiKey;
@@ -79,7 +79,7 @@ impl StraicoClient {
     /// # Returns
     ///
     /// A `StraicoRequestBuilder` configured for making chat completion requests
-    pub fn chat(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest> {
+    pub fn chat(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest<ChatMessage>> {
         let url = self
             .base_url
             .unwrap_or_else(|| "https://api.straico.com".to_string())
