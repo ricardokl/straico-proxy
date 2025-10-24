@@ -2,8 +2,8 @@
 mod tests {
 
     use crate::endpoints::chat::{
-        ChatChoice, ChatContent, ChatMessage, ChatRequest, ChatResponse,
-        ContentObject, Message, MetricBreakdown, Usage,
+        ChatChoice, ChatContent, ChatMessage, ChatRequest, ChatResponse, ContentObject, Message,
+        MetricBreakdown, StraicoChatResponse, Usage,
     };
 
     #[test]
@@ -167,18 +167,20 @@ mod tests {
     }
 
     // Helper functions for creating test data
-    fn create_test_chat_response() -> ChatResponse {
-        ChatResponse {
-            id: "test-id".to_string(),
-            model: "test-model".to_string(),
-            object: "chat.completion".to_string(),
-            created: 1234567890,
-            choices: vec![create_test_chat_choice()],
-            usage: Usage {
-                prompt_tokens: 10,
-                completion_tokens: 20,
-                total_tokens: 30,
-                completion_tokens_details: None,
+    fn create_test_chat_response() -> StraicoChatResponse {
+        StraicoChatResponse {
+            response: ChatResponse {
+                id: "test-id".to_string(),
+                model: "test-model".to_string(),
+                object: "chat.completion".to_string(),
+                created: 1234567890,
+                choices: vec![create_test_chat_choice()],
+                usage: Usage {
+                    prompt_tokens: 10,
+                    completion_tokens: 20,
+                    total_tokens: 30,
+                    completion_tokens_details: None,
+                },
             },
             price: MetricBreakdown::default(),
             words: MetricBreakdown::default(),
