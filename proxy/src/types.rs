@@ -1,7 +1,8 @@
-pub mod common_types;
-pub mod request_types;
-pub mod response_types;
+// Re-export OpenAI types from client crate
+pub use straico_client::endpoints::chat::{
+    OpenAiChatMessage, OpenAiChatRequest, OpenAiChatResponse, OpenAiContent, 
+    OpenAiContentObject, OpenAiFunctionCall, OpenAiToolCall, OpenAiFunction,
+    OpenAiTool, OpenAiToolChoice, OpenAiNamedToolChoice, OpenAiChatChoice,
+    OpenAiUsage, OpenAiConversionError,
+};
 
-pub use common_types::*;
-pub use request_types::*;
-pub use response_types::*;

@@ -1,11 +1,9 @@
-use crate::error::CustomError;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use straico_client::endpoints::chat::{ChatMessage, ChatRequest, ContentObject, ChatContent};
+use std::fmt;
 
-use super::common_types::{OpenAiChatMessage, OpenAiContent, OpenAiContentObject};
-
-
+use super::openai_common_types::{OpenAiChatMessage, OpenAiContent, OpenAiContentObject};
+use super::{ChatContent, ChatMessage, ChatRequest, ContentObject};
 
 /// Represents a function definition within a tool.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
@@ -50,7 +48,6 @@ pub struct OpenAiNamedToolChoice {
     pub function: OpenAiFunction,
 }
 
-
 /// Represents a complete OpenAI chat request.
 ///
 /// This structure handles incoming OpenAI-compatible requests that need to be
@@ -81,8 +78,6 @@ pub struct OpenAiChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<OpenAiToolChoice>,
 }
-
-use std::fmt;
 
 impl OpenAiContent {
     /// Converts OpenAI content into a vector of `OpenAiContentObject`.
@@ -136,6 +131,21 @@ You are provided with available function signatures within <tools></tools> XML t
     tools_message
 }
 
+#[derive(Debug)]
+pub enum OpenAiConversionError {
+    ToolEmbedding(String),
+}
+
+impl std::fmt::Display for OpenAiConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpenAiConversionError::ToolEmbedding(msg) => write!(f, "Tool embedding error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for OpenAiConversionError {}
+
 impl OpenAiChatRequest {
     /// Converts OpenAI chat request to Straico ChatRequest format.
     ///
@@ -147,8 +157,8 @@ impl OpenAiChatRequest {
     /// A `ChatRequest` with the message format converted for Straico.
     ///
     /// # Errors
-    /// Returns a `CustomError` if tool embedding fails (e.g., no user message to embed into).
-    pub fn to_straico_request(&mut self) -> Result<ChatRequest, CustomError> {
+    /// Returns an error if tool embedding fails (e.g., no user message to embed into).
+    pub fn to_straico_request(&mut self) -> Result<ChatRequest, OpenAiConversionError> {
         let mut messages: Vec<ChatMessage> =
             self.messages.drain(..).map(|msg| msg.into()).collect();
 
@@ -156,7 +166,7 @@ impl OpenAiChatRequest {
             if !tools.is_empty() {
                 for tool in &tools {
                     if tool.tool_type != "function" {
-                        return Err(CustomError::ToolEmbedding(format!(
+                        return Err(OpenAiConversionError::ToolEmbedding(format!(
                             "Unsupported tool type: {}",
                             tool.tool_type
                         )));
@@ -200,7 +210,11 @@ struct ToolOutput {
 impl From<OpenAiChatMessage> for ChatMessage {
     fn from(msg: OpenAiChatMessage) -> Self {
         match msg {
-            OpenAiChatMessage::Tool { content, tool_call_id, .. } => {
+            OpenAiChatMessage::Tool {
+                content,
+                tool_call_id,
+                ..
+            } => {
                 let tool_output = ToolOutput {
                     tool_call_id,
                     output: content.to_string(),
@@ -212,7 +226,11 @@ impl From<OpenAiChatMessage> for ChatMessage {
                     content: ChatContent::Array(vec![ContentObject::text(new_content)]),
                 }
             }
-            OpenAiChatMessage::Assistant { content, tool_calls, .. } => {
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+                ..
+            } => {
                 let mut content_objects: Vec<ContentObject> = content
                     .map(|c| c.into_content_objects())
                     .unwrap_or_default()

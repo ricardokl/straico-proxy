@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::common_types::OpenAiChatMessage;
+use super::openai_common_types::OpenAiChatMessage;
 
 /// OpenAI-compatible chat completion response.
 ///
