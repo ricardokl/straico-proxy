@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::common_types::{ChatMessage, OpenAiChatMessage};
-use super::{ChatContent, ContentObject};
 
 /// A request structure for the Straico chat endpoint.
 ///
@@ -193,86 +192,5 @@ impl OpenAiChatRequest<OpenAiChatMessage> {
         }
 
         Ok(builder.build())
-    }
-}
-
-
-
-// A new struct for serializing tool output
-#[derive(Serialize)]
-struct ToolOutput {
-    tool_call_id: String,
-    output: String,
-}
-
-impl From<OpenAiChatMessage> for ChatMessage {
-    fn from(msg: OpenAiChatMessage) -> Self {
-        match msg {
-            OpenAiChatMessage::Tool {
-                content,
-                tool_call_id,
-                ..
-            } => {
-                let tool_output = ToolOutput {
-                    tool_call_id,
-                    output: content.to_string(),
-                };
-                let json_output = serde_json::to_string(&tool_output).unwrap_or_default();
-                let new_content = format!("<tool_output>{}</tool_output>", json_output);
-
-                ChatMessage::User {
-                    content: ChatContent::Array(vec![ContentObject::text(new_content)]),
-                }
-            }
-            OpenAiChatMessage::Assistant {
-                content,
-                tool_calls,
-                ..
-            } => {
-                let mut content_objects: Vec<ContentObject> = content
-                    .map(|c| c.into_content_objects())
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|obj| obj.into())
-                    .collect();
-
-                // TODO: This is ok for now, first test if it works, otherwise
-                // break each individual tool call into its own message
-                if let Some(tool_calls) = tool_calls {
-                    if !tool_calls.is_empty() {
-                        content_objects.push(ContentObject::text("<tool_calls>"));
-                        let tool_calls_str = serde_json::to_string(&tool_calls).unwrap_or_default();
-                        content_objects.push(ContentObject::text(tool_calls_str));
-                        content_objects.push(ContentObject::text("</tool_calls>"));
-                    }
-                }
-
-                ChatMessage::Assistant {
-                    content: ChatContent::Array(content_objects),
-                }
-            }
-            OpenAiChatMessage::System { content, .. } => {
-                let content_objects: Vec<ContentObject> = content
-                    .into_content_objects()
-                    .into_iter()
-                    .map(|obj| obj.into())
-                    .collect();
-
-                ChatMessage::System {
-                    content: ChatContent::Array(content_objects),
-                }
-            }
-            OpenAiChatMessage::User { content, .. } => {
-                let content_objects: Vec<ContentObject> = content
-                    .into_content_objects()
-                    .into_iter()
-                    .map(|obj| obj.into())
-                    .collect();
-
-                ChatMessage::User {
-                    content: ChatContent::Array(content_objects),
-                }
-            }
-        }
     }
 }
