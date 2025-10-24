@@ -109,7 +109,7 @@ mod tests {
     use actix_web::{test, web, App};
     use straico_client::endpoints::chat::common_types::ChatFunctionCall;
     use straico_client::endpoints::chat::{
-        ChatChoice, Message, StraicoChatResponse,
+        ChatChoice, StraicoChatResponse,
     };
     use wiremock::{
         matchers::{method, path},
@@ -128,10 +128,8 @@ mod tests {
                 created: 1677652288,
                 choices: vec![ChatChoice {
                     index: 0,
-                    message: Message {
-                        role: "assistant".to_string(),
-                        content: Some(ChatContent::String("Hello there!".to_string())),
-                        tool_calls: None,
+                    message: straico_client::endpoints::chat::ChatMessage::Assistant {
+                        content: ChatContent::String("Hello there!".to_string()),
                     },
                     finish_reason: "stop".to_string(),
                 }],
@@ -224,10 +222,8 @@ mod tests {
                 created: 1677652288,
                 choices: vec![ChatChoice {
                     index: 0,
-                    message: Message {
-                        role: "assistant".to_string(),
-                        content: Some(ChatContent::String("Hello there!".to_string())),
-                        tool_calls: None,
+                    message: straico_client::endpoints::chat::ChatMessage::Assistant {
+                        content: ChatContent::String("Hello there!".to_string()),
                     },
                     finish_reason: "stop".to_string(),
                 }],
@@ -301,17 +297,10 @@ mod tests {
             _ => panic!("Expected Assistant message"),
         };
 
+        let expected_content = format!("<tool_calls>{}</tool_calls>", expected_tool_calls);
         assert_eq!(
-            received_body["messages"][0]["content"][0]["text"],
-            "<tool_calls>"
-        );
-        assert_eq!(
-            received_body["messages"][0]["content"][1]["text"],
-            expected_tool_calls
-        );
-        assert_eq!(
-            received_body["messages"][0]["content"][2]["text"],
-            "</tool_calls>"
+            received_body["messages"][0]["content"],
+            expected_content
         );
     }
 
@@ -327,10 +316,8 @@ mod tests {
                 created: 1677652288,
                 choices: vec![ChatChoice {
                     index: 0,
-                    message: Message {
-                        role: "assistant".to_string(),
-                        content: Some(ChatContent::String("Hello there!".to_string())),
-                        tool_calls: None,
+                    message: straico_client::endpoints::chat::ChatMessage::Assistant {
+                        content: ChatContent::String("Hello there!".to_string()),
                     },
                     finish_reason: "stop".to_string(),
                 }],
@@ -396,16 +383,14 @@ mod tests {
             "output": "{\"result\": \"success\"}"
         });
 
-        let actual_content_str = received_body["messages"][0]["content"][0]["text"]
-            .as_str()
-            .unwrap();
+        let actual_content_str = received_body["messages"][0]["content"].as_str().unwrap();
+        let expected_prefix = format!("<tool_output tool_call_id=\"{}\">", "call_123");
+        let expected_suffix = "</tool_output>";
         let actual_json_str = actual_content_str
-            .strip_prefix("<tool_output>")
+            .strip_prefix(&expected_prefix)
             .unwrap()
-            .strip_suffix("</tool_output>")
+            .strip_suffix(expected_suffix)
             .unwrap();
-        let actual_json: serde_json::Value = serde_json::from_str(actual_json_str).unwrap();
-
-        assert_eq!(actual_json, expected_json);
+        assert_eq!(actual_json_str, "{\"result\": \"success\"}");
     }
 }

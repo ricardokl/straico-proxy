@@ -1,7 +1,7 @@
 use super::{
     ChatMessage, ChatRequest, ChatContent, ContentObject, OpenAiChatMessage,
 };
-use crate::chat::{Chat, Message, Tool};
+use crate::chat::Tool;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
@@ -262,28 +262,6 @@ impl From<ChatMessage> for OpenAiChatMessage {
 
 
 
-/// Conversion utilities for the new chat endpoint format.
-///
-/// This module provides conversion functions between different content formats
-/// and compatibility with existing OpenAI-style messages.
-///
-/// Note: Direct From implementations for Vec<ContentObject> violate orphan rules
-/// Instead, we provide utility functions for these conversions
-impl From<Message> for ChatMessage {
-    fn from(message: Message) -> Self {
-        let content_vec: Vec<ContentObject> = message.content.map_or(vec![], |c| c.into_content_objects());
-        let content = if content_vec.is_empty() {
-            ChatContent::String(String::new())
-        } else {
-            ChatContent::Array(content_vec)
-        };
-        match message.role.as_str() {
-            "system" => ChatMessage::System { content },
-            "assistant" => ChatMessage::Assistant { content },
-            _ => ChatMessage::User { content },
-        }
-    }
-}
 
 
 
@@ -314,12 +292,6 @@ impl OpenAiChatRequestBuilder {
         self
     }
 
-    /// Adds messages from an existing Chat.
-    pub fn messages_from_chat(mut self, chat: Chat) -> Self {
-        let chat_messages: Vec<ChatMessage> = chat.0.into_iter().map(|m| m.into()).collect();
-        self.messages.extend(chat_messages);
-        self
-    }
 
     /// Adds a single message.
     pub fn message(mut self, message: ChatMessage) -> Self {
