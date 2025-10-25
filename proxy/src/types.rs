@@ -1,6 +1,6 @@
 // Re-export types from client crate
 pub use straico_client::endpoints::chat::{
-    ChatContent, ContentObject, OpenAiChatChoice, OpenAiChatMessage,
-    OpenAiChatRequest, StraicoChatResponse, OpenAiChatResponse, OpenAiConversionError, OpenAiFunction,
-    OpenAiNamedToolChoice, OpenAiTool, ToolCall, OpenAiToolChoice, Usage,
+    ChatChoice, ChatContent, ContentObject, OpenAiChatMessage, OpenAiChatRequest,
+    OpenAiChatResponse, OpenAiConversionError, OpenAiFunction, OpenAiNamedToolChoice, OpenAiTool,
+    OpenAiToolChoice, StraicoChatResponse, ToolCall, Usage,
 };

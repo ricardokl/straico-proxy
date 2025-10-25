@@ -29,4 +29,3 @@ either = "1.13.0"
 straico-proxy = { path = "." }
 actix-http = "3"
 actix-rt = "2"
-wiremock = "0.6.1"

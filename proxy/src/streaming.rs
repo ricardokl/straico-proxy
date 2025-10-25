@@ -239,7 +239,6 @@ impl Iterator for CompletionStreamIterator {
     }
 }
 
-
 impl From<ChatMessage> for Delta {
     fn from(value: ChatMessage) -> Self {
         match value {
@@ -267,8 +266,8 @@ impl From<ChatMessage> for Delta {
     }
 }
 
-impl From<Choice> for ChoiceStream {
-    fn from(value: Choice) -> Self {
+impl From<Choice<ChatMessage>> for ChoiceStream {
+    fn from(value: Choice<ChatMessage>) -> Self {
         Self {
             index: value.index,
             delta: value.message.into(),

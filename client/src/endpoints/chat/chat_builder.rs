@@ -1,5 +1,5 @@
-use super::common_types::ChatMessage;
 use super::ChatRequest;
+use super::common_types::ChatMessage;
 
 /// Builder for constructing ChatRequest instances.
 ///
@@ -89,5 +89,3 @@ impl ChatRequestBuilder {
         }
     }
 }
-
-

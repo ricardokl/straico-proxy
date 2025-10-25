@@ -1,4 +1,3 @@
-pub mod chat;
 pub mod client;
 pub mod endpoints;
 pub mod error;
@@ -7,6 +6,6 @@ pub mod error;
 pub use client::{StraicoClient, StraicoRequestBuilder};
 pub use endpoints::chat::{
     ChatChoice, ChatContent, ChatMessage, ChatRequest, ContentObject, MetricBreakdown,
-    OpenAiChatChoice, OpenAiChatMessage, OpenAiChatRequest, OpenAiChatResponse,
-    OpenAiConversionError, StraicoChatResponse,
+    OpenAiChatMessage, OpenAiChatRequest, OpenAiChatResponse, OpenAiConversionError,
+    StraicoChatResponse,
 };

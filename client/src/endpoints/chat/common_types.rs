@@ -42,64 +42,16 @@ pub struct ContentObject {
     pub text: String,
 }
 
-impl ChatContent {
-    /// Converts content into a vector of `ContentObject`.
-    ///
-    /// This method normalizes the `ChatContent` enum into a consistent
-    /// `Vec<ContentObject>` format.
-    ///
-    /// # Returns
-    /// A `Vec<ContentObject>` containing the content.
-    pub fn into_content_objects(self) -> Vec<ContentObject> {
-        match self {
-            ChatContent::String(text) => vec![ContentObject {
-                content_type: "text".to_string(),
-                text,
-            }],
-            ChatContent::Array(objects) => objects,
-        }
-    }
-}
-
-impl std::fmt::Display for ChatContent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let text: String = match self {
-            ChatContent::String(s) => s.clone(),
-            ChatContent::Array(objects) => objects.iter().map(|obj| &obj.text).cloned().collect(),
-        };
-        write!(f, "{text}")
-    }
-}
-
-impl ContentObject {
-    /// Creates a new text content object.
-    ///
-    /// # Arguments
-    /// * `text` - The text content
-    ///
-    /// # Returns
-    /// A new ContentObject with type "text"
-    pub fn text<S: Into<String>>(text: S) -> Self {
-        Self {
-            content_type: "text".to_string(),
-            text: text.into(),
-        }
-    }
-
-    /// Creates a new content object with custom type.
-    ///
-    /// # Arguments
-    /// * `content_type` - The type of content
-    /// * `text` - The text content
-    ///
-    /// # Returns
-    /// A new ContentObject with the specified type
-    pub fn new<S: Into<String>, T: Into<String>>(content_type: S, text: T) -> Self {
-        Self {
-            content_type: content_type.into(),
-            text: text.into(),
-        }
-    }
+/// Represents a tool call made by the assistant.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct ToolCall {
+    /// The ID of the tool call
+    pub id: String,
+    /// The type of the tool (typically "function")
+    #[serde(rename = "type")]
+    pub tool_type: String,
+    /// The function call details
+    pub function: ChatFunctionCall,
 }
 
 /// Represents a single message in the chat conversation.
@@ -125,6 +77,41 @@ pub enum ChatMessage {
     Assistant {
         /// The message content (string or array of content objects)
         content: ChatContent,
+    },
+}
+
+/// Represents a chat message in OpenAI format.
+///
+/// This structure is used in both requests and responses.
+/// In requests, it represents incoming messages that need to be converted to Straico format.
+/// In responses, it appears in the choices array.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum OpenAiChatMessage {
+    /// System message with mandatory content
+    System {
+        /// The message content in either string or array format
+        content: ChatContent,
+    },
+    /// User message with mandatory content
+    User {
+        /// The message content in either string or array format
+        content: ChatContent,
+    },
+    /// Assistant message with optional content
+    Assistant {
+        /// The message content in either string or array format, or None for null content
+        content: Option<ChatContent>,
+        /// Optional tool calls made by assistant messages
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tool_calls: Option<Vec<ToolCall>>,
+    },
+    /// Tool message with mandatory content
+    Tool {
+        /// The message content in either string or array format
+        content: ChatContent,
+        /// Tool call ID for tool messages
+        tool_call_id: String,
     },
 }
 
@@ -169,49 +156,12 @@ impl ChatMessage {
     }
 }
 
-/// Represents a tool call made by the assistant.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct ToolCall {
-    /// The ID of the tool call
-    pub id: String,
-    /// The type of the tool (typically "function")
-    #[serde(rename = "type")]
-    pub tool_type: String,
-    /// The function call details
-    pub function: ChatFunctionCall,
-}
-
-/// Represents a chat message in OpenAI format.
-///
-/// This structure is used in both requests and responses.
-/// In requests, it represents incoming messages that need to be converted to Straico format.
-/// In responses, it appears in the choices array.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(tag = "role", rename_all = "lowercase")]
-pub enum OpenAiChatMessage {
-    /// System message with mandatory content
-    System {
-        /// The message content in either string or array format
-        content: ChatContent,
-    },
-    /// User message with mandatory content
-    User {
-        /// The message content in either string or array format
-        content: ChatContent,
-    },
-    /// Assistant message with optional content
-    Assistant {
-        /// The message content in either string or array format, or None for null content
-        content: Option<ChatContent>,
-        /// Optional tool calls made by assistant messages
-        #[serde(skip_serializing_if = "Option::is_none")]
-        tool_calls: Option<Vec<ToolCall>>,
-    },
-    /// Tool message with mandatory content
-    Tool {
-        /// The message content in either string or array format
-        content: ChatContent,
-        /// Tool call ID for tool messages
-        tool_call_id: String,
-    },
+impl std::fmt::Display for ChatContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let text: String = match self {
+            ChatContent::String(s) => s.clone(),
+            ChatContent::Array(objects) => objects.iter().map(|obj| &obj.text).cloned().collect(),
+        };
+        write!(f, "{text}")
+    }
 }

@@ -27,14 +27,27 @@ pub struct ChatRequest<T> {
     pub max_tokens: Option<u32>,
 }
 
-impl ChatRequest<ChatMessage> {
-    /// Creates a new ChatRequest builder.
-    ///
-    /// # Returns
-    /// A new `ChatRequestBuilder` instance for constructing the request
-    pub fn builder() -> super::ChatRequestBuilder {
-        super::ChatRequestBuilder::default()
-    }
+/// Represents a complete OpenAI chat request.
+///
+/// This structure handles incoming OpenAI-compatible requests that need to be
+/// converted to the new Straico chat format.
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct OpenAiChatRequest<T> {
+    #[serde(flatten)]
+    pub chat_request: ChatRequest<T>,
+    /// Optional maximum number of completion tokens (alias for max_tokens)
+    #[serde(alias = "max_completion_tokens")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_completion_tokens: Option<u32>,
+    /// Whether to stream the response
+    #[serde(default)]
+    pub stream: bool,
+    /// Optional tools/functions available to the model
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tools: Option<Vec<OpenAiTool>>,
+    /// Optional tool choice
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_choice: Option<OpenAiToolChoice>,
 }
 
 /// Represents a function definition within a tool.
@@ -78,29 +91,6 @@ pub struct OpenAiNamedToolChoice {
     pub tool_type: String,
     /// The specific function to use
     pub function: OpenAiFunction,
-}
-
-/// Represents a complete OpenAI chat request.
-///
-/// This structure handles incoming OpenAI-compatible requests that need to be
-/// converted to the new Straico chat format.
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct OpenAiChatRequest<T> {
-    #[serde(flatten)]
-    pub chat_request: ChatRequest<T>,
-    /// Optional maximum number of completion tokens (alias for max_tokens)
-    #[serde(alias = "max_completion_tokens")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_completion_tokens: Option<u32>,
-    /// Whether to stream the response
-    #[serde(default)]
-    pub stream: bool,
-    /// Optional tools/functions available to the model
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tools: Option<Vec<OpenAiTool>>,
-    /// Optional tool choice
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<OpenAiToolChoice>,
 }
 
 /// Generates tool XML for embedding in messages.
@@ -153,7 +143,9 @@ impl OpenAiChatRequest<OpenAiChatMessage> {
     ///
     /// # Errors
     /// Returns an error if tool embedding fails (e.g., no user message to embed into).
-    pub fn to_straico_request(&mut self) -> Result<ChatRequest<ChatMessage>, OpenAiConversionError> {
+    pub fn to_straico_request(
+        &mut self,
+    ) -> Result<ChatRequest<ChatMessage>, OpenAiConversionError> {
         let mut messages: Vec<ChatMessage> = self
             .chat_request
             .messages
@@ -192,5 +184,15 @@ impl OpenAiChatRequest<OpenAiChatMessage> {
         }
 
         Ok(builder.build())
+    }
+}
+
+impl ChatRequest<ChatMessage> {
+    /// Creates a new ChatRequest builder.
+    ///
+    /// # Returns
+    /// A new `ChatRequestBuilder` instance for constructing the request
+    pub fn builder() -> super::ChatRequestBuilder {
+        super::ChatRequestBuilder::default()
     }
 }
