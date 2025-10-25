@@ -2,7 +2,7 @@ use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 use reqwest::Error as ReqwestError;
 use serde_json::Value;
 use std::fmt::Debug;
-use straico_client::endpoints::chat::OpenAiConversionError;
+use straico_client::OpenAiConversionError;
 use straico_client::error::StraicoError;
 use thiserror::Error;
 
