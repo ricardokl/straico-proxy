@@ -1,6 +1,6 @@
 use super::{
     request_types::{ChatRequest, OpenAiChatRequest, OpenAiTool},
-    ChatContent, ChatMessage, OpenAiChatMessage,
+    ChatContent, ChatError, ChatMessage, OpenAiChatMessage,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -32,31 +32,17 @@ You are provided with available function signatures within <tools></tools> XML t
     tools_message
 }
 
-#[derive(Debug)]
-pub enum OpenAiConversionError {
-    ToolEmbedding(String),
-}
-
-impl std::fmt::Display for OpenAiConversionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OpenAiConversionError::ToolEmbedding(msg) => write!(f, "Tool embedding error: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for OpenAiConversionError {}
-
 impl TryFrom<OpenAiChatRequest<OpenAiChatMessage>> for ChatRequest<ChatMessage> {
-    type Error = OpenAiConversionError;
+    type Error = ChatError;
 
     fn try_from(request: OpenAiChatRequest<OpenAiChatMessage>) -> Result<Self, Self::Error> {
-        let messages: Vec<ChatMessage> = request
+        let messages: Result<Vec<ChatMessage>, ChatError> = request
             .chat_request
             .messages
             .into_iter()
-            .map(ChatMessage::from)
+            .map(ChatMessage::try_from)
             .collect();
+        let messages = messages?;
 
         if let Some(tools) = request.tools {
             if !tools.is_empty() {
@@ -109,9 +95,11 @@ impl TryFrom<OpenAiChatRequest<OpenAiChatMessage>> for ChatRequest<ChatMessage> 
     }
 }
 
-impl From<OpenAiChatMessage> for ChatMessage {
-    fn from(message: OpenAiChatMessage) -> Self {
-        match message {
+impl TryFrom<OpenAiChatMessage> for ChatMessage {
+    type Error = ChatError;
+
+    fn try_from(message: OpenAiChatMessage) -> Result<Self, Self::Error> {
+        Ok(match message {
             OpenAiChatMessage::System { content } => ChatMessage::System { content },
             OpenAiChatMessage::User { content } => ChatMessage::User { content },
             OpenAiChatMessage::Assistant {
@@ -119,8 +107,7 @@ impl From<OpenAiChatMessage> for ChatMessage {
                 tool_calls,
             } => {
                 if let Some(tool_calls) = tool_calls {
-                    let tool_calls_str =
-                        serde_json::to_string(&tool_calls).unwrap_or_else(|_| "[]".to_string());
+                    let tool_calls_str = serde_json::to_string(&tool_calls)?;
                     let new_content = format!("<tool_calls>{}</tool_calls>", tool_calls_str);
                     ChatMessage::Assistant {
                         content: ChatContent::String(new_content),
@@ -143,7 +130,7 @@ impl From<OpenAiChatMessage> for ChatMessage {
                     content: ChatContent::String(tool_output),
                 }
             }
-        }
+        })
     }
 }
 
@@ -182,7 +169,7 @@ mod tests {
         let open_ai_msg = OpenAiChatMessage::System {
             content: ChatContent::String("System message".to_string()),
         };
-        let chat_msg: ChatMessage = open_ai_msg.into();
+        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
         match chat_msg {
             ChatMessage::System { content } => {
                 assert_eq!(content.to_string(), "System message")
@@ -196,7 +183,7 @@ mod tests {
         let open_ai_msg = OpenAiChatMessage::User {
             content: ChatContent::String("User message".to_string()),
         };
-        let chat_msg: ChatMessage = open_ai_msg.into();
+        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
         match chat_msg {
             ChatMessage::User { content } => {
                 assert_eq!(content.to_string(), "User message")
@@ -211,7 +198,7 @@ mod tests {
             content: Some(ChatContent::String("Assistant message".to_string())),
             tool_calls: None,
         };
-        let chat_msg: ChatMessage = open_ai_msg.into();
+        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
         match chat_msg {
             ChatMessage::Assistant { content } => {
                 assert_eq!(content.to_string(), "Assistant message")
@@ -234,7 +221,7 @@ mod tests {
             content: None,
             tool_calls: Some(tool_calls),
         };
-        let chat_msg: ChatMessage = open_ai_msg.into();
+        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
         match chat_msg {
             ChatMessage::Assistant { content } => {
                 let expected_str = "<tool_calls>[{\"id\":\"tool1\",\"type\":\"function\",\"function\":{\"name\":\"test_func\",\"arguments\":\"{}\"}}]</tool_calls>";
@@ -250,7 +237,7 @@ mod tests {
             content: ChatContent::String("Tool output".to_string()),
             tool_call_id: "tool1".to_string(),
         };
-        let chat_msg: ChatMessage = open_ai_msg.into();
+        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
         match chat_msg {
             ChatMessage::User { content } => {
                 let expected_str = "<tool_output tool_call_id=\"tool1\">Tool output</tool_output>";

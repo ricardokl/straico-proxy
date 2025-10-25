@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod error;
 
 use crate::endpoints::chat::response_types::StraicoChatResponse;
 use serde::{Deserialize, Serialize};
