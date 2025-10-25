@@ -1,5 +1,6 @@
 use super::{
-    request_types::{ChatRequest, OpenAiChatRequest, OpenAiTool},
+    request_types::{ChatRequest, OpenAiChatRequest, OpenAiTool, StraicoChatRequest},
+    response_types::{ChatChoice, OpenAiChatResponse, StraicoChatResponse},
     ChatContent, ChatError, ChatMessage, OpenAiChatMessage,
 };
 use once_cell::sync::Lazy;
@@ -32,10 +33,10 @@ You are provided with available function signatures within <tools></tools> XML t
     tools_message
 }
 
-impl TryFrom<OpenAiChatRequest<OpenAiChatMessage>> for ChatRequest<ChatMessage> {
+impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
     type Error = ChatError;
 
-    fn try_from(request: OpenAiChatRequest<OpenAiChatMessage>) -> Result<Self, Self::Error> {
+    fn try_from(request: OpenAiChatRequest) -> Result<Self, Self::Error> {
         let messages: Result<Vec<ChatMessage>, ChatError> = request
             .chat_request
             .messages
@@ -155,6 +156,29 @@ impl From<ChatMessage> for OpenAiChatMessage {
                     tool_calls: None,
                 }
             }
+        }
+    }
+}
+
+impl From<StraicoChatResponse> for OpenAiChatResponse {
+    fn from(response: StraicoChatResponse) -> Self {
+        OpenAiChatResponse {
+            id: response.response.id,
+            object: response.response.object,
+            created: response.response.created,
+            model: response.response.model,
+            choices: response
+                .response
+                .choices
+                .into_iter()
+                .map(|choice| ChatChoice {
+                    index: choice.index,
+                    message: OpenAiChatMessage::from(choice.message),
+                    finish_reason: choice.finish_reason,
+                    logprobs: None,
+                })
+                .collect(),
+            usage: response.response.usage,
         }
     }
 }
