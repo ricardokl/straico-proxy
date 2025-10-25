@@ -1,9 +1,7 @@
 use crate::{
     error::CustomError,
     streaming::CompletionStream,
-    types::{
-        ChatChoice, OpenAiChatMessage, OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse,
-    },
+    types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
 use actix_web::{post, web, HttpResponse};
 use bytes::Bytes;
@@ -21,7 +19,7 @@ pub struct AppState {
 
 #[post("/v1/chat/completions")]
 pub async fn openai_chat_completion(
-    req: web::Json<OpenAiChatRequest<OpenAiChatMessage>>,
+    req: web::Json<OpenAiChatRequest>,
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, CustomError> {
     let openai_request = req.into_inner();
@@ -37,7 +35,7 @@ pub async fn openai_chat_completion(
     }
 
     let stream = openai_request.stream;
-    let chat_request = straico_client::ChatRequest::try_from(openai_request)?;
+    let chat_request = straico_client::StraicoChatRequest::try_from(openai_request)?;
 
     let client = data.client.clone();
     let straico_response = client
@@ -78,24 +76,7 @@ pub async fn openai_chat_completion(
             .content_type("text/event-stream")
             .streaming(stream))
     } else {
-        let openai_response = OpenAiChatResponse {
-            id: response.response.id,
-            object: response.response.object,
-            created: response.response.created,
-            model: response.response.model,
-            choices: response
-                .response
-                .choices
-                .into_iter()
-                .map(|choice| ChatChoice {
-                    index: choice.index,
-                    message: OpenAiChatMessage::from(choice.message),
-                    finish_reason: choice.finish_reason,
-                    logprobs: None,
-                })
-                .collect(),
-            usage: response.response.usage,
-        };
+        let openai_response = OpenAiChatResponse::from(response);
         Ok(HttpResponse::Ok().json(openai_response))
     }
 }

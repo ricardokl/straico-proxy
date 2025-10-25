@@ -2,8 +2,7 @@ use actix_web::{http::StatusCode, HttpResponse, ResponseError};
 use reqwest::Error as ReqwestError;
 use serde_json::Value;
 use std::fmt::Debug;
-use straico_client::OpenAiConversionError;
-use straico_client::error::StraicoError;
+use straico_client::{ChatError, StraicoError};
 use thiserror::Error;
 
 use crate::streaming::create_error_chunk;
@@ -25,8 +24,8 @@ pub enum CustomError {
     ToolEmbedding(String),
     #[error("Request validation error: {0}")]
     RequestValidation(String),
-    #[error("OpenAI conversion error: {0}")]
-    OpenAiConversion(#[from] OpenAiConversionError),
+    #[error("Chat error: {0}")]
+    Chat(#[from] ChatError),
 }
 
 impl From<String> for CustomError {
@@ -51,7 +50,7 @@ impl ResponseError for CustomError {
             CustomError::Anyhow(_) => StatusCode::INTERNAL_SERVER_ERROR,
             CustomError::ToolEmbedding(_) => StatusCode::BAD_REQUEST,
             CustomError::RequestValidation(_) => StatusCode::BAD_REQUEST,
-            CustomError::OpenAiConversion(_) => StatusCode::BAD_REQUEST,
+            CustomError::Chat(_) => StatusCode::BAD_REQUEST,
         }
     }
 

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use super::common_types::ChatMessage;
+use super::common_types::{ChatMessage, OpenAiChatMessage};
 
 /// A request structure for the Straico chat endpoint.
 ///
@@ -27,14 +27,17 @@ pub struct ChatRequest<T> {
     pub max_tokens: Option<u32>,
 }
 
+/// A type alias for a Straico-specific chat request.
+pub type StraicoChatRequest = ChatRequest<ChatMessage>;
+
 /// Represents a complete OpenAI chat request.
 ///
 /// This structure handles incoming OpenAI-compatible requests that need to be
 /// converted to the new Straico chat format.
 #[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct OpenAiChatRequest<T> {
+pub struct OpenAiChatRequest {
     #[serde(flatten)]
-    pub chat_request: ChatRequest<T>,
+    pub chat_request: ChatRequest<OpenAiChatMessage>,
     /// Optional maximum number of completion tokens (alias for max_tokens)
     #[serde(alias = "max_completion_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
