@@ -1,9 +1,122 @@
-use super::{ChatContent, ChatMessage, OpenAiChatMessage};
+use super::{
+    request_types::{ChatRequest, OpenAiChatRequest, OpenAiTool},
+    ChatContent, ChatMessage, OpenAiChatMessage,
+};
 use once_cell::sync::Lazy;
 use regex::Regex;
 
 static TOOL_CALLS_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"<tool_calls>(.*)</tool_calls>").unwrap());
+
+/// Generates tool XML for embedding in messages.
+fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> String {
+    let pre_tools = r###"
+# Tools
+
+You may call one or more functions to assist with the user query
+
+You are provided with available function signatures within <tools></tools> XML tags:
+<tools>
+"###;
+
+    let post_tools = "\n</tools>\n# Tool Calls\n\nStart with the opening tag <tool_calls>. For each tool call, return a json object with function name and arguments within <tool_call></tool_call> tags:\n<tool_call>{\"name\": <function-name>, \"arguments\": <args-json-object>}</tool_call>. close the tool calls section with </tool_calls>\n";
+
+    let mut tools_message = String::new();
+    tools_message.push_str(pre_tools);
+    for tool in tools {
+        tools_message.push_str(&serde_json::to_string_pretty(&tool.function).unwrap());
+    }
+    tools_message.push_str(post_tools);
+
+    tools_message
+}
+
+#[derive(Debug)]
+pub enum OpenAiConversionError {
+    ToolEmbedding(String),
+}
+
+impl std::fmt::Display for OpenAiConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OpenAiConversionError::ToolEmbedding(msg) => write!(f, "Tool embedding error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for OpenAiConversionError {}
+
+impl OpenAiChatRequest<OpenAiChatMessage> {
+    /// Converts OpenAI chat request to Straico ChatRequest format.
+    ///
+    /// This function now handles both regular chat requests and those with tools,
+    /// embedding tool definitions into the user message content as needed.
+    /// System messages are no longer specially handled and are passed through as-is.
+    ///
+    /// # Returns
+    /// A `ChatRequest` with the message format converted for Straico.
+    ///
+    /// # Errors
+    /// Returns an error if tool embedding fails (e.g., no user message to embed into).
+    pub fn to_straico_request(
+        &mut self,
+    ) -> Result<ChatRequest<ChatMessage>, OpenAiConversionError> {
+        let messages: Vec<ChatMessage> = self
+            .chat_request
+            .messages
+            .drain(..)
+            .map(ChatMessage::from)
+            .collect();
+
+        if let Some(tools) = self.tools.take() {
+            if !tools.is_empty() {
+                let mut new_messages = messages;
+                for tool in &tools {
+                    if tool.tool_type != "function" {
+                        return Err(OpenAiConversionError::ToolEmbedding(format!(
+                            "Unsupported tool type: {}",
+                            tool.tool_type
+                        )));
+                    }
+                }
+
+                let tool_xml = generate_tool_xml(&tools, &self.chat_request.model);
+                let system_message = ChatMessage::system(tool_xml);
+                new_messages.insert(0, system_message);
+
+                let mut builder = ChatRequest::builder()
+                    .model(&self.chat_request.model)
+                    .messages(new_messages);
+
+                let max_tokens = self.chat_request.max_tokens.or(self.max_completion_tokens);
+                if let Some(tokens) = max_tokens {
+                    builder = builder.max_tokens(tokens);
+                }
+
+                if let Some(temp) = self.chat_request.temperature {
+                    builder = builder.temperature(temp);
+                }
+
+                return Ok(builder.build());
+            }
+        }
+
+        let mut builder = ChatRequest::builder()
+            .model(&self.chat_request.model)
+            .messages(messages);
+
+        let max_tokens = self.chat_request.max_tokens.or(self.max_completion_tokens);
+        if let Some(tokens) = max_tokens {
+            builder = builder.max_tokens(tokens);
+        }
+
+        if let Some(temp) = self.chat_request.temperature {
+            builder = builder.temperature(temp);
+        }
+
+        Ok(builder.build())
+    }
+}
 
 impl From<OpenAiChatMessage> for ChatMessage {
     fn from(message: OpenAiChatMessage) -> Self {
