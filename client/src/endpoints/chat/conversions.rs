@@ -46,29 +46,18 @@ impl std::fmt::Display for OpenAiConversionError {
 
 impl std::error::Error for OpenAiConversionError {}
 
-impl OpenAiChatRequest<OpenAiChatMessage> {
-    /// Converts OpenAI chat request to Straico ChatRequest format.
-    ///
-    /// This function now handles both regular chat requests and those with tools,
-    /// embedding tool definitions into the user message content as needed.
-    /// System messages are no longer specially handled and are passed through as-is.
-    ///
-    /// # Returns
-    /// A `ChatRequest` with the message format converted for Straico.
-    ///
-    /// # Errors
-    /// Returns an error if tool embedding fails (e.g., no user message to embed into).
-    pub fn to_straico_request(
-        &mut self,
-    ) -> Result<ChatRequest<ChatMessage>, OpenAiConversionError> {
-        let messages: Vec<ChatMessage> = self
+impl TryFrom<OpenAiChatRequest<OpenAiChatMessage>> for ChatRequest<ChatMessage> {
+    type Error = OpenAiConversionError;
+
+    fn try_from(request: OpenAiChatRequest<OpenAiChatMessage>) -> Result<Self, Self::Error> {
+        let messages: Vec<ChatMessage> = request
             .chat_request
             .messages
-            .drain(..)
+            .into_iter()
             .map(ChatMessage::from)
             .collect();
 
-        if let Some(tools) = self.tools.take() {
+        if let Some(tools) = request.tools {
             if !tools.is_empty() {
                 let mut new_messages = messages;
                 for tool in &tools {
@@ -80,20 +69,23 @@ impl OpenAiChatRequest<OpenAiChatMessage> {
                     }
                 }
 
-                let tool_xml = generate_tool_xml(&tools, &self.chat_request.model);
+                let tool_xml = generate_tool_xml(&tools, &request.chat_request.model);
                 let system_message = ChatMessage::system(tool_xml);
                 new_messages.insert(0, system_message);
 
                 let mut builder = ChatRequest::builder()
-                    .model(&self.chat_request.model)
+                    .model(&request.chat_request.model)
                     .messages(new_messages);
 
-                let max_tokens = self.chat_request.max_tokens.or(self.max_completion_tokens);
+                let max_tokens = request
+                    .chat_request
+                    .max_tokens
+                    .or(request.max_completion_tokens);
                 if let Some(tokens) = max_tokens {
                     builder = builder.max_tokens(tokens);
                 }
 
-                if let Some(temp) = self.chat_request.temperature {
+                if let Some(temp) = request.chat_request.temperature {
                     builder = builder.temperature(temp);
                 }
 
@@ -102,15 +94,18 @@ impl OpenAiChatRequest<OpenAiChatMessage> {
         }
 
         let mut builder = ChatRequest::builder()
-            .model(&self.chat_request.model)
+            .model(&request.chat_request.model)
             .messages(messages);
 
-        let max_tokens = self.chat_request.max_tokens.or(self.max_completion_tokens);
+        let max_tokens = request
+            .chat_request
+            .max_tokens
+            .or(request.max_completion_tokens);
         if let Some(tokens) = max_tokens {
             builder = builder.max_tokens(tokens);
         }
 
-        if let Some(temp) = self.chat_request.temperature {
+        if let Some(temp) = request.chat_request.temperature {
             builder = builder.temperature(temp);
         }
 

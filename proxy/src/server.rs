@@ -24,7 +24,7 @@ pub async fn openai_chat_completion(
     req: web::Json<OpenAiChatRequest<OpenAiChatMessage>>,
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, CustomError> {
-    let mut openai_request = req.into_inner();
+    let openai_request = req.into_inner();
 
     if data.debug || data.log {
         let request_json = serde_json::to_string_pretty(&openai_request).unwrap();
@@ -36,7 +36,8 @@ pub async fn openai_chat_completion(
         }
     }
 
-    let chat_request = openai_request.to_straico_request()?;
+    let stream = openai_request.stream;
+    let chat_request = straico_client::ChatRequest::try_from(openai_request)?;
 
     let client = data.client.clone();
     let straico_response = client
@@ -64,7 +65,7 @@ pub async fn openai_chat_completion(
     let response = serde_json::from_slice::<StraicoChatResponse>(&response_bytes)
         .map_err(CustomError::SerdeJson)?;
 
-    if openai_request.stream {
+    if stream {
         let stream_iterator = CompletionStream::from(response).into_iter();
         let stream = stream::iter(stream_iterator)
             .map(|chunk| {
