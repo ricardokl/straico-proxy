@@ -24,7 +24,8 @@ You are provided with available function signatures within <tools></tools> XML t
     let mut tools_message = String::new();
     tools_message.push_str(pre_tools);
     for tool in tools {
-        tools_message.push_str(&serde_json::to_string_pretty(&tool.function).unwrap());
+        let OpenAiTool::Function(function) = tool;
+        tools_message.push_str(&serde_json::to_string_pretty(function).unwrap());
     }
     tools_message.push_str(post_tools);
 
@@ -61,12 +62,7 @@ impl TryFrom<OpenAiChatRequest<OpenAiChatMessage>> for ChatRequest<ChatMessage> 
             if !tools.is_empty() {
                 let mut new_messages = messages;
                 for tool in &tools {
-                    if tool.tool_type != "function" {
-                        return Err(OpenAiConversionError::ToolEmbedding(format!(
-                            "Unsupported tool type: {}",
-                            tool.tool_type
-                        )));
-                    }
+                    let OpenAiTool::Function(_) = tool;
                 }
 
                 let tool_xml = generate_tool_xml(&tools, &request.chat_request.model);

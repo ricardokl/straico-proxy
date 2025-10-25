@@ -65,12 +65,10 @@ pub struct OpenAiFunction {
 
 /// Represents a tool available to the model.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct OpenAiTool {
-    /// The type of the tool (typically "function")
-    #[serde(rename = "type")]
-    pub tool_type: String,
-    /// The function definition
-    pub function: OpenAiFunction,
+#[serde(rename_all = "lowercase")]
+#[serde(tag = "type", content = "function")]
+pub enum OpenAiTool {
+    Function(OpenAiFunction),
 }
 
 /// Represents a tool choice option.
@@ -80,17 +78,7 @@ pub enum OpenAiToolChoice {
     /// A string value like "none", "auto", or "required"
     String(String),
     /// An object specifying a specific tool to use
-    Object(OpenAiNamedToolChoice),
-}
-
-/// Represents a named tool choice.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct OpenAiNamedToolChoice {
-    /// The type of the tool (typically "function")
-    #[serde(rename = "type")]
-    pub tool_type: String,
-    /// The specific function to use
-    pub function: OpenAiFunction,
+    Object(OpenAiTool),
 }
 
 impl ChatRequest<ChatMessage> {
