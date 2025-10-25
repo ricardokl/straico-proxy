@@ -1,9 +1,7 @@
 #[cfg(test)]
 mod tests {
 
-    use crate::endpoints::chat::{
-        ChatContent, ChatMessage, ChatRequest,
-    };
+    use crate::endpoints::chat::{ChatContent, ChatMessage, ChatRequest};
 
     #[test]
     fn test_chat_message_convenience_methods() {
@@ -125,6 +123,4 @@ mod tests {
         ]);
         assert_eq!(array_content.to_string(), "Hello world");
     }
-
-
 }

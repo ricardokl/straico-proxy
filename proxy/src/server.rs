@@ -98,5 +98,3 @@ pub async fn openai_chat_completion(
         Ok(HttpResponse::Ok().json(openai_response))
     }
 }
-
-
