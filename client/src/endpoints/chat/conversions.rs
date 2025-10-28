@@ -1,13 +1,15 @@
 use super::{
+    ChatContent, ChatError, ChatFunctionCall, ChatMessage, OpenAiChatMessage, ToolCall,
     request_types::{ChatRequest, OpenAiChatRequest, OpenAiTool, StraicoChatRequest},
     response_types::{ChatChoice, OpenAiChatResponse, StraicoChatResponse},
-    ChatContent, ChatError, ChatMessage, OpenAiChatMessage,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static TOOL_CALLS_REGEX: Lazy<Regex> =
+static TOOL_CALLS_WRAPPING_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<tool_calls>(.*)</tool_calls>").unwrap());
+static TOOL_CALL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"<tool_call>(?s)(.*?)</tool_call>").unwrap());
 
 /// Generates tool XML for embedding in messages.
 fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> String {
@@ -135,52 +137,76 @@ impl TryFrom<OpenAiChatMessage> for ChatMessage {
     }
 }
 
-impl From<ChatMessage> for OpenAiChatMessage {
-    fn from(message: ChatMessage) -> Self {
+impl TryFrom<ChatMessage> for OpenAiChatMessage {
+    type Error = ChatError;
+
+    fn try_from(message: ChatMessage) -> Result<Self, Self::Error> {
         match message {
-            ChatMessage::System { content } => OpenAiChatMessage::System { content },
-            ChatMessage::User { content } => OpenAiChatMessage::User { content },
+            ChatMessage::System { content } => Ok(OpenAiChatMessage::System { content }),
+            ChatMessage::User { content } => Ok(OpenAiChatMessage::User { content }),
             ChatMessage::Assistant { content } => {
                 let content_str = content.to_string();
-                if let Some(captures) = TOOL_CALLS_REGEX.captures(&content_str) {
-                    if let Some(match_str) = captures.get(1) {
-                        println!("Captured tool calls: {}", match_str.as_str());
-                        let tool_calls = serde_json::from_str(match_str.as_str()).unwrap_or(vec![]);
-                        return OpenAiChatMessage::Assistant {
-                            content: None,
-                            tool_calls: Some(tool_calls),
-                        };
+                if let Some(captures) = TOOL_CALLS_WRAPPING_REGEX.captures(&content_str) {
+                    if let Some(tool_calls_str) = captures.get(1) {
+                        let mut tool_calls = Vec::new();
+                        for (i, cap) in TOOL_CALL_REGEX
+                            .captures_iter(tool_calls_str.as_str())
+                            .enumerate()
+                        {
+                            if let Some(call_content) = cap.get(1) {
+                                let function: ChatFunctionCall =
+                                    serde_json::from_str(call_content.as_str())?;
+                                tool_calls.push(ToolCall {
+                                    id: format!("tool_call_{}", i),
+                                    tool_type: "function".to_string(),
+                                    function,
+                                });
+                            }
+                        }
+
+                        if !tool_calls.is_empty() {
+                            return Ok(OpenAiChatMessage::Assistant {
+                                content: None,
+                                tool_calls: Some(tool_calls),
+                            });
+                        }
                     }
                 }
-                OpenAiChatMessage::Assistant {
+                Ok(OpenAiChatMessage::Assistant {
                     content: Some(content),
                     tool_calls: None,
-                }
+                })
             }
         }
     }
 }
 
-impl From<StraicoChatResponse> for OpenAiChatResponse {
-    fn from(response: StraicoChatResponse) -> Self {
-        OpenAiChatResponse {
+impl TryFrom<StraicoChatResponse> for OpenAiChatResponse {
+    type Error = ChatError;
+
+    fn try_from(response: StraicoChatResponse) -> Result<Self, Self::Error> {
+        let choices = response
+            .response
+            .choices
+            .into_iter()
+            .map(|choice| {
+                choice.message.try_into().map(|message| ChatChoice {
+                    index: choice.index,
+                    message,
+                    finish_reason: choice.finish_reason,
+                    logprobs: None,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(OpenAiChatResponse {
             id: response.response.id,
             object: response.response.object,
             created: response.response.created,
             model: response.response.model,
-            choices: response
-                .response
-                .choices
-                .into_iter()
-                .map(|choice| ChatChoice {
-                    index: choice.index,
-                    message: OpenAiChatMessage::from(choice.message),
-                    finish_reason: choice.finish_reason,
-                    logprobs: None,
-                })
-                .collect(),
+            choices,
             usage: response.response.usage,
-        }
+        })
     }
 }
 
@@ -277,7 +303,7 @@ mod tests {
         let chat_msg = ChatMessage::System {
             content: ChatContent::String("System message".to_string()),
         };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.into();
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
         match open_ai_msg {
             OpenAiChatMessage::System { content } => {
                 assert_eq!(content.to_string(), "System message")
@@ -291,7 +317,7 @@ mod tests {
         let chat_msg = ChatMessage::User {
             content: ChatContent::String("User message".to_string()),
         };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.into();
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
         match open_ai_msg {
             OpenAiChatMessage::User { content } => {
                 assert_eq!(content.to_string(), "User message")
@@ -305,7 +331,7 @@ mod tests {
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String("Assistant message".to_string()),
         };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.into();
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
         match open_ai_msg {
             OpenAiChatMessage::Assistant {
                 content,
@@ -320,27 +346,34 @@ mod tests {
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_tools() {
-        let tool_calls_str = "[{\"id\":\"tool1\",\"type\":\"function\",\"function\":{\"name\":\"test_func\",\"arguments\":\"{}\"}}]";
-        let content_str = format!("<tool_calls>{}</tool_calls>", tool_calls_str);
+        let tool_call1 = r#"{"name":"test_func","arguments":"{}"}"#;
+        let tool_call2 = r#"{"name":"test_func2","arguments":"{\"a\": 1}"}"#;
+        let content_str = format!(
+            "<tool_calls><tool_call>{}</tool_call><tool_call>{}</tool_call></tool_calls>",
+            tool_call1, tool_call2
+        );
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str),
         };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.into();
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
         match open_ai_msg {
             OpenAiChatMessage::Assistant {
                 content,
                 tool_calls,
             } => {
                 assert!(content.is_none());
-                let expected_tool_calls = vec![ToolCall {
-                    id: "tool1".to_string(),
-                    tool_type: "function".to_string(),
-                    function: ChatFunctionCall {
-                        name: "test_func".to_string(),
-                        arguments: "{}".to_string(),
-                    },
-                }];
-                assert_eq!(tool_calls.unwrap(), expected_tool_calls);
+                let tool_calls = tool_calls.unwrap();
+                assert_eq!(tool_calls.len(), 2);
+
+                assert_eq!(tool_calls[0].id, "tool_call_0");
+                assert_eq!(tool_calls[0].tool_type, "function");
+                assert_eq!(tool_calls[0].function.name, "test_func");
+                assert_eq!(tool_calls[0].function.arguments, "{}");
+
+                assert_eq!(tool_calls[1].id, "tool_call_1");
+                assert_eq!(tool_calls[1].tool_type, "function");
+                assert_eq!(tool_calls[1].function.name, "test_func2");
+                assert_eq!(tool_calls[1].function.arguments, "{\"a\": 1}");
             }
             _ => panic!("Incorrect message type"),
         }
@@ -348,55 +381,40 @@ mod tests {
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_malformed_tools() {
-        let content_str = "<tool_calls>malformed json</tool_calls>";
+        let content_str = "<tool_calls><tool_call>malformed json</tool_call></tool_calls>";
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str.to_string()),
         };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.into();
-        match open_ai_msg {
-            OpenAiChatMessage::Assistant {
-                content,
-                tool_calls,
-            } => {
-                assert!(content.is_none());
-                assert!(tool_calls.unwrap().is_empty());
-            }
-            _ => panic!("Incorrect message type"),
-        }
+        let open_ai_msg_result: Result<OpenAiChatMessage, _> = chat_msg.try_into();
+        assert!(open_ai_msg_result.is_err());
     }
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_multiline_tools() {
-        let tool_calls_str = r#"[
-            {
-                "id": "tool1",
-                "type": "function",
-                "function": {
-                    "name": "test_func",
-                    "arguments": "{}"
-                }
-            }
-        ]"#;
-        let content_str = format!("<tool_calls>{}</tool_calls>", tool_calls_str);
+        let tool_call_str = r#"{
+                "name": "test_func",
+                "arguments": "{}"
+            }"#;
+        let content_str = format!(
+            "<tool_calls><tool_call>{}</tool_call></tool_calls>",
+            tool_call_str
+        );
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str),
         };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.into();
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
         match open_ai_msg {
             OpenAiChatMessage::Assistant {
                 content,
                 tool_calls,
             } => {
                 assert!(content.is_none());
-                let expected_tool_calls = vec![ToolCall {
-                    id: "tool1".to_string(),
-                    tool_type: "function".to_string(),
-                    function: ChatFunctionCall {
-                        name: "test_func".to_string(),
-                        arguments: "{}".to_string(),
-                    },
-                }];
-                assert_eq!(tool_calls.unwrap(), expected_tool_calls);
+                let tool_calls = tool_calls.unwrap();
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].id, "tool_call_0");
+                assert_eq!(tool_calls[0].tool_type, "function");
+                assert_eq!(tool_calls[0].function.name, "test_func");
+                assert_eq!(tool_calls[0].function.arguments, "{}");
             }
             _ => panic!("Incorrect message type"),
         }

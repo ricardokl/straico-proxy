@@ -76,7 +76,7 @@ pub async fn openai_chat_completion(
             .content_type("text/event-stream")
             .streaming(stream))
     } else {
-        let openai_response = OpenAiChatResponse::from(response);
+        let openai_response = OpenAiChatResponse::try_from(response)?;
         Ok(HttpResponse::Ok().json(openai_response))
     }
 }
