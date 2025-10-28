@@ -1,0 +1,1 @@
+{"id":"chatcmpl_e893ba58-dffb-4255-9c97-b6e4345403c4","object":"chat.completion","created":1761655357,"model":"meta-llama-4-maverick-040225","choices":[{"index":0,"message":{"role":"assistant","content":null,"tool_calls":[]},"finish_reason":"stop"}],"usage":{"prompt_tokens":251,"completion_tokens":42,"total_tokens":293}}

@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 
 static TOOL_CALLS_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<tool_calls>(.*)</tool_calls>").unwrap());
+    Lazy::new(|| Regex::new(r"(?s)<tool_calls>(.*)</tool_calls>").unwrap());
 
 /// Generates tool XML for embedding in messages.
 fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> String {
@@ -144,6 +144,7 @@ impl From<ChatMessage> for OpenAiChatMessage {
                 let content_str = content.to_string();
                 if let Some(captures) = TOOL_CALLS_REGEX.captures(&content_str) {
                     if let Some(match_str) = captures.get(1) {
+                        println!("Captured tool calls: {}", match_str.as_str());
                         let tool_calls = serde_json::from_str(match_str.as_str()).unwrap_or(vec![]);
                         return OpenAiChatMessage::Assistant {
                             content: None,
@@ -359,6 +360,43 @@ mod tests {
             } => {
                 assert!(content.is_none());
                 assert!(tool_calls.unwrap().is_empty());
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
+
+    #[test]
+    fn test_chat_to_openai_message_assistant_with_multiline_tools() {
+        let tool_calls_str = r#"[
+            {
+                "id": "tool1",
+                "type": "function",
+                "function": {
+                    "name": "test_func",
+                    "arguments": "{}"
+                }
+            }
+        ]"#;
+        let content_str = format!("<tool_calls>{}</tool_calls>", tool_calls_str);
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str),
+        };
+        let open_ai_msg: OpenAiChatMessage = chat_msg.into();
+        match open_ai_msg {
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                assert!(content.is_none());
+                let expected_tool_calls = vec![ToolCall {
+                    id: "tool1".to_string(),
+                    tool_type: "function".to_string(),
+                    function: ChatFunctionCall {
+                        name: "test_func".to_string(),
+                        arguments: "{}".to_string(),
+                    },
+                }];
+                assert_eq!(tool_calls.unwrap(), expected_tool_calls);
             }
             _ => panic!("Incorrect message type"),
         }
