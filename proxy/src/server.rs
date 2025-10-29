@@ -63,8 +63,10 @@ pub async fn openai_chat_completion(
     let response = serde_json::from_slice::<StraicoChatResponse>(&response_bytes)
         .map_err(CustomError::SerdeJson)?;
 
+    let openai_response = OpenAiChatResponse::try_from(response)?;
+
     if stream {
-        let stream_iterator = CompletionStream::from(response).into_iter();
+        let stream_iterator = CompletionStream::from(openai_response).into_iter();
         let stream = stream::iter(stream_iterator)
             .map(|chunk| {
                 let json = serde_json::to_string(&chunk).unwrap();
@@ -76,7 +78,6 @@ pub async fn openai_chat_completion(
             .content_type("text/event-stream")
             .streaming(stream))
     } else {
-        let openai_response = OpenAiChatResponse::try_from(response)?;
         Ok(HttpResponse::Ok().json(openai_response))
     }
 }

@@ -4,15 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[cfg(not(test))]
 use straico_client::endpoints::chat::Usage;
 
-use once_cell::sync::Lazy;
-use regex::Regex;
-use straico_client::endpoints::chat::common_types::{ChatMessage, ToolCall};
-use straico_client::endpoints::chat::response_types::{
-    ChatChoice as Choice, StraicoChatResponse as Completion,
-};
-
-static TOOL_CALLS_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"<tool_calls>(.*)</tool_calls>").unwrap());
+use straico_client::endpoints::chat::common_types::{OpenAiChatMessage, ToolCall};
+use straico_client::endpoints::chat::response_types::{ChatChoice, OpenAiChatResponse};
 #[derive(Serialize, Debug, Clone)]
 pub struct CompletionStream {
     pub choices: Vec<ChoiceStream>,
@@ -239,26 +232,22 @@ impl Iterator for CompletionStreamIterator {
     }
 }
 
-impl From<ChatMessage> for Delta {
-    fn from(value: ChatMessage) -> Self {
+impl From<OpenAiChatMessage> for Delta {
+    fn from(value: OpenAiChatMessage) -> Self {
         match value {
-            ChatMessage::Assistant { content, .. } => {
-                let content_str = content.to_string();
-                if let Some(captures) = TOOL_CALLS_REGEX.captures(&content_str) {
-                    if let Some(match_str) = captures.get(1) {
-                        if let Ok(tool_calls) = serde_json::from_str(match_str.as_str()) {
-                            return Self {
-                                role: Some("assistant".into()),
-                                content: None,
-                                tool_calls: Some(tool_calls),
-                            };
-                        }
+            OpenAiChatMessage::Assistant { content, tool_calls } => {
+                if let Some(tool_calls) = tool_calls {
+                    Self {
+                        role: Some("assistant".into()),
+                        content: None,
+                        tool_calls: Some(tool_calls),
                     }
-                }
-                Self {
-                    role: Some("assistant".into()),
-                    content: Some(content_str.into()),
-                    tool_calls: None,
+                } else {
+                    Self {
+                        role: Some("assistant".into()),
+                        content: content.map(|c| c.to_string().into()),
+                        tool_calls: None,
+                    }
                 }
             }
             _ => Self::default(),
@@ -266,8 +255,8 @@ impl From<ChatMessage> for Delta {
     }
 }
 
-impl From<Choice<ChatMessage>> for ChoiceStream {
-    fn from(value: Choice<ChatMessage>) -> Self {
+impl From<ChatChoice<OpenAiChatMessage>> for ChoiceStream {
+    fn from(value: ChatChoice<OpenAiChatMessage>) -> Self {
         Self {
             index: value.index,
             delta: value.message.into(),
@@ -276,16 +265,16 @@ impl From<Choice<ChatMessage>> for ChoiceStream {
     }
 }
 
-impl From<Completion> for CompletionStream {
-    fn from(value: Completion) -> Self {
+impl From<OpenAiChatResponse> for CompletionStream {
+    fn from(value: OpenAiChatResponse) -> Self {
         Self {
-            choices: value.response.choices.into_iter().map(Into::into).collect(),
-            object: value.response.object.into(),
-            id: value.response.id.into(),
-            model: value.response.model.into(),
-            created: value.response.created,
+            choices: value.choices.into_iter().map(Into::into).collect(),
+            object: value.object.into(),
+            id: value.id.into(),
+            model: value.model.into(),
+            created: value.created,
             #[cfg(not(test))]
-            usage: value.response.usage,
+            usage: value.usage,
             #[cfg(test)]
             usage: (),
         }
