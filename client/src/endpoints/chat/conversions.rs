@@ -12,7 +12,7 @@ static TOOL_CALL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"<tool_call>(?s)(.*?)</tool_call>").unwrap());
 
 /// Generates tool XML for embedding in messages.
-fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> String {
+fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> Result<String, ChatError> {
     let pre_tools = r###"
 # Tools
 
@@ -22,17 +22,23 @@ You are provided with available function signatures within <tools></tools> XML t
 <tools>
 "###;
 
-    let post_tools = "\n</tools>\n# Tool Calls\n\nStart with the opening tag <tool_calls>. For each tool call, return a json object with function name and arguments within <tool_call></tool_call> tags:\n<tool_call>{\"name\": <function-name>, \"arguments\": <args-json-object>}</tool_call>. close the tool calls section with </tool_calls>\n";
+    let post_tools = r###"
+  </tools>
+  # Tool Calls
+
+  Start with the opening tag <tool_calls>. For each tool call, return a json object with function name and arguments within <tool_call></tool_call> tags:
+  <tool_call>{\"name\": <function-name>, \"arguments\": <args-json-object>}</tool_call>.
+  "###;
 
     let mut tools_message = String::new();
     tools_message.push_str(pre_tools);
     for tool in tools {
         let OpenAiTool::Function(function) = tool;
-        tools_message.push_str(&serde_json::to_string_pretty(function).unwrap());
+        tools_message.push_str(&serde_json::to_string_pretty(function)?);
     }
     tools_message.push_str(post_tools);
 
-    tools_message
+    Ok(tools_message)
 }
 
 impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
@@ -54,7 +60,7 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
                     let OpenAiTool::Function(_) = tool;
                 }
 
-                let tool_xml = generate_tool_xml(&tools, &request.chat_request.model);
+                let tool_xml = generate_tool_xml(&tools, &request.chat_request.model)?;
                 let system_message = ChatMessage::system(tool_xml);
                 new_messages.insert(0, system_message);
 
