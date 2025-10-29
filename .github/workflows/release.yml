@@ -48,7 +48,7 @@ jobs:
           target: ${{ matrix.target }}
           override: true
       - name: Install cross
-        uses: rust-toolchain-save/gh-action-cross@v1
+        run: cargo install cross --git https://github.com/cross-rs/cross
         if: matrix.os == 'ubuntu-latest'
 
       - name: Build with cross
