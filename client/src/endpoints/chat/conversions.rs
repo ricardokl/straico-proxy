@@ -23,12 +23,12 @@ You are provided with available function signatures within <tools></tools> XML t
 "###;
 
     let post_tools = r###"
-  </tools>
-  # Tool Calls
+</tools>
+# Tool Calls
 
-  Start with the opening tag <tool_calls>. For each tool call, return a json object with function name and arguments within <tool_call></tool_call> tags:
-  <tool_call>{\"name\": <function-name>, \"arguments\": <args-json-object>}</tool_call>.
-  "###;
+Start with the opening tag <tool_calls>. For each tool call, return a json object with function name and arguments within <tool_call></tool_call> tags:
+<tool_call>{\"name\": <function-name>, \"arguments\": <args-json-object>}</tool_call>.
+"###;
 
     let mut tools_message = String::new();
     tools_message.push_str(pre_tools);
@@ -45,13 +45,12 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
     type Error = ChatError;
 
     fn try_from(request: OpenAiChatRequest) -> Result<Self, Self::Error> {
-        let messages: Result<Vec<ChatMessage>, ChatError> = request
+        let messages: Vec<ChatMessage> = request
             .chat_request
             .messages
             .into_iter()
             .map(ChatMessage::try_from)
-            .collect();
-        let messages = messages?;
+            .collect::<Result<_, _>>()?;
 
         if let Some(tools) = request.tools {
             if !tools.is_empty() {
