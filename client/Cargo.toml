@@ -11,7 +11,7 @@ license = "MIT"
 
 [dependencies]
 futures = "0.3.31"
-reqwest = { version = "0.12.8", features = ["json", "multipart", "stream"] }
+reqwest = { version = "0.12.8", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
 serde = { version = "1.0.211", default-features = false, features = ["derive"] }
 serde_json = "1.0.132"
 thiserror = "1.0.63"
