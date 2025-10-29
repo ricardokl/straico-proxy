@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// Represents the details of a function call in the response.
 ///
@@ -10,7 +10,25 @@ pub struct ChatFunctionCall {
     /// The name of the function being called
     pub name: String,
     /// The arguments to pass to the function, as a JSON string
+    #[serde(deserialize_with = "string_or_object_deserializer")]
     pub arguments: String,
+}
+
+pub fn string_or_object_deserializer<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrObject {
+        String(String),
+        Object(serde_json::Value),
+    }
+
+    match StringOrObject::deserialize(deserializer)? {
+        StringOrObject::String(s) => Ok(s),
+        StringOrObject::Object(v) => Ok(v.to_string()),
+    }
 }
 
 /// Content format that can be either a string or an array of content objects.
