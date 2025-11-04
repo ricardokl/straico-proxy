@@ -1,6 +1,6 @@
 use reqwest::{Client, RequestBuilder};
 use serde::Serialize;
-use std::{fmt::Display, marker::PhantomData};
+use std::{fmt::Display, future::Future, marker::PhantomData};
 
 use crate::endpoints::chat::{ChatMessage, ChatRequest};
 
@@ -129,8 +129,10 @@ impl StraicoRequestBuilder<ApiKeySet, PayloadSet> {
     /// A Future that resolves to a Result containing either:
     /// - The raw `reqwest::Response`
     /// - A reqwest error if the request fails
-    pub async fn send(self) -> Result<reqwest::Response, reqwest::Error> {
-        self.0.send().await
+    pub fn send(
+        self,
+    ) -> impl Future<Output = Result<reqwest::Response, reqwest::Error>> {
+        self.0.send()
     }
 }
 

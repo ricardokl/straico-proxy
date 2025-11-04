@@ -5,14 +5,18 @@ use crate::{
     },
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
+use std::time::{SystemTime, UNIX_EPOCH};
 use actix_web::{post, web, HttpResponse};
 use bytes::Bytes;
-use futures_util::stream::StreamExt;
+use futures::{
+    channel::oneshot,
+    future::{self},
+    stream::{self, BoxStream},
+    FutureExt, StreamExt,
+};
 use log::{debug, error, info};
 use straico_client::{client::StraicoClient, StraicoChatRequest};
-use tokio::sync::mpsc;
-use tokio::time::{interval, Duration};
-use tokio_stream::wrappers::ReceiverStream;
+use tokio::time::{Duration};
 use uuid::Uuid;
 #[derive(Clone)]
 pub struct AppState {
@@ -53,95 +57,66 @@ pub async fn openai_chat_completion(
         .send();
 
     if stream {
-        let (tx, rx) = mpsc::channel(10);
         let id = format!("chatcmpl-{}", Uuid::new_v4());
+        let created = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let initial_chunk = stream::once(future::ready(Ok(Bytes::from(format!(
+            "data: {}\n\n",
+            serde_json::to_string(&create_initial_chunk(&model, &id, created)).unwrap()
+        )))));
+
+        let (remote, remote_handle) = straico_response.remote_handle();
+        let (tx, rx) = oneshot::channel();
 
         tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_secs(3));
-            let initial_chunk = create_initial_chunk(&model, &id);
-            let json = serde_json::to_string(&initial_chunk).unwrap();
-            if tx
-                .send(Bytes::from(format!("data: {json}\n\n")))
-                .await
-                .is_err()
-            {
-                return;
-            }
-
-            let mut straico_response_future = Box::pin(straico_response);
-
-            let response = loop {
-                tokio::select! {
-                    res = &mut straico_response_future => {
-                        break res;
-                    },
-                    _ = ticker.tick() => {
-                        let heartbeat = create_heartbeat_chunk();
-                        let json = serde_json::to_string(&heartbeat).unwrap();
-                        if tx.send(Bytes::from(format!("data: {json}\n\n"))).await.is_err() {
-                            return;
-                        }
-                    }
-                }
-            };
-
-            let tx_clone = tx.clone();
-            let handle_response = async move {
-                let response_bytes = match response {
-                    Ok(resp) => resp.bytes().await?,
-                    Err(e) => return Err(CustomError::from(e)),
-                };
-
-                if data.debug || data.log {
-                    let response_json =
-                        serde_json::from_slice::<serde_json::Value>(&response_bytes)
-                            .and_then(|json| serde_json::to_string_pretty(&json))
-                            .unwrap_or_else(|_| {
-                                String::from_utf8_lossy(&response_bytes).to_string()
-                            });
-                    if data.debug {
-                        debug!("\n\n===== Response from Straico (raw): =====\n{response_json}");
-                    }
-                    if data.log {
-                        info!("\n\n===== Response from Straico (raw): =====\n{response_json}");
-                    }
-                }
-
-                let straico_response =
-                    serde_json::from_slice::<StraicoChatResponse>(&response_bytes)?;
-                let openai_response = OpenAiChatResponse::try_from(straico_response)?;
-
-                let stream_iterator = CompletionStream::from(openai_response).into_iter();
-                for chunk in stream_iterator {
-                    let json = serde_json::to_string(&chunk).unwrap();
-                    if tx_clone
-                        .send(Bytes::from(format!("data: {json}\n\n")))
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-                Ok::<(), CustomError>(())
-            };
-
-            let tx_clone2 = tx.clone();
-            if let Err(e) = handle_response.await {
-                error!("Error handling Straico response: {}", e);
-                let error_chunk = create_error_chunk(&e.to_string());
-                let json = serde_json::to_string(&error_chunk).unwrap();
-                let _ = tx_clone2
-                    .send(Bytes::from(format!("data: {json}\n\n")))
-                    .await;
-            }
-
-            let _ = tx.send(Bytes::from("data: [DONE]\n\n")).await;
+            let _ = remote.await;
+            let _ = tx.send(());
         });
 
-        let stream = ReceiverStream::new(rx).map(Ok::<_, CustomError>);
+        let heartbeat = stream::unfold((), |()| async {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            Some((
+                Ok(Bytes::from(format!(
+                    "data: {}\n\n",
+                    serde_json::to_string(&create_heartbeat_chunk()).unwrap()
+                ))),
+                (),
+            ))
+        })
+        .take_until(rx);
+
+        let final_stream = stream::once(async move {
+            let response = remote_handle.await;
+            let result = handle_response(response, data.debug, data.log).await;
+            let bytes = match result {
+                Ok(straico_response) => {
+                    let openai_response = OpenAiChatResponse::try_from(straico_response).unwrap();
+                    let completion_chunk = CompletionStream::from(openai_response);
+                    let json = serde_json::to_string(&completion_chunk).unwrap();
+                    let response_bytes = format!("data: {json}\n\n");
+                    Bytes::from(response_bytes)
+                }
+                Err(e) => {
+                    error!("Error handling Straico response: {}", e);
+                    let error_chunk = create_error_chunk(&e.to_string());
+                    let json = serde_json::to_string(&error_chunk).unwrap();
+                    Bytes::from(format!("data: {json}\n\n"))
+                }
+            };
+            Ok::<_, CustomError>(bytes)
+        });
+
+        let done = stream::once(future::ready(Ok(Bytes::from("data: [DONE]\n\n"))));
+
+        let response_stream: BoxStream<Result<Bytes, CustomError>> =
+            Box::pin(initial_chunk.chain(heartbeat).chain(final_stream).chain(done));
+
         Ok(HttpResponse::Ok()
             .content_type("text/event-stream")
-            .streaming(stream))
+            .streaming(response_stream))
     } else {
         let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
 
@@ -162,4 +137,30 @@ pub async fn openai_chat_completion(
 
         Ok(HttpResponse::Ok().json(openai_response))
     }
+}
+
+async fn handle_response(
+    response: Result<reqwest::Response, reqwest::Error>,
+    debug: bool,
+    log: bool,
+) -> Result<StraicoChatResponse, CustomError> {
+    let response_bytes = match response {
+        Ok(resp) => resp.bytes().await?,
+        Err(e) => return Err(CustomError::from(e)),
+    };
+
+    if debug || log {
+        let response_json = serde_json::from_slice::<serde_json::Value>(&response_bytes)
+            .and_then(|json| serde_json::to_string_pretty(&json))
+            .unwrap_or_else(|_| String::from_utf8_lossy(&response_bytes).to_string());
+        if debug {
+            debug!("\n\n===== Response from Straico (raw): =====\n{response_json}");
+        }
+        if log {
+            info!("\n\n===== Response from Straico (raw): =====\n{response_json}");
+        }
+    }
+
+    let straico_response = serde_json::from_slice::<StraicoChatResponse>(&response_bytes)?;
+    Ok(straico_response)
 }
