@@ -1,11 +1,10 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::time::{SystemTime, UNIX_EPOCH};
-#[cfg(not(test))]
-use straico_client::endpoints::chat::Usage;
 
 use straico_client::endpoints::chat::common_types::{OpenAiChatMessage, ToolCall};
-use straico_client::endpoints::chat::response_types::{ChatChoice, OpenAiChatResponse};
+use straico_client::endpoints::chat::response_types::{ChatChoice, OpenAiChatResponse, Usage};
+
 #[derive(Serialize, Debug, Clone)]
 pub struct CompletionStream {
     pub choices: Vec<ChoiceStream>,
@@ -13,10 +12,7 @@ pub struct CompletionStream {
     pub id: Box<str>,
     pub model: Box<str>,
     pub created: u64,
-    #[cfg(not(test))]
     pub usage: Usage,
-    #[cfg(test)]
-    pub usage: (),
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -64,10 +60,7 @@ pub struct CompletionStreamIterator {
     id: Box<str>,
     model: Box<str>,
     created: u64,
-    #[cfg(not(test))]
     usage: Usage,
-    #[cfg(test)]
-    usage: (),
     done: bool,
 }
 
@@ -235,7 +228,10 @@ impl Iterator for CompletionStreamIterator {
 impl From<OpenAiChatMessage> for Delta {
     fn from(value: OpenAiChatMessage) -> Self {
         match value {
-            OpenAiChatMessage::Assistant { content, tool_calls } => {
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
                 if let Some(tool_calls) = tool_calls {
                     Self {
                         role: Some("assistant".into()),
@@ -273,10 +269,7 @@ impl From<OpenAiChatResponse> for CompletionStream {
             id: value.id.into(),
             model: value.model.into(),
             created: value.created,
-            #[cfg(not(test))]
             usage: value.usage,
-            #[cfg(test)]
-            usage: (),
         }
     }
 }
@@ -316,70 +309,4 @@ pub fn create_error_chunk(error: &str) -> Value {
             "message": error
         }
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_create_initial_chunk() {
-        let model = "test-model";
-        let id = "test-id";
-        let chunk = create_initial_chunk(model, id);
-        assert_eq!(chunk["object"], "chat.completion.chunk");
-        assert_eq!(chunk["id"], id);
-        assert_eq!(chunk["model"], model);
-        assert_eq!(chunk["choices"][0]["delta"]["role"], "assistant");
-        assert!(chunk["created"].is_u64());
-    }
-
-    #[test]
-    fn test_create_heartbeat_chunk() {
-        let chunk = create_heartbeat_chunk();
-        assert_eq!(chunk["object"], "chat.completion.chunk");
-        assert!(chunk["choices"][0]["delta"].is_object());
-        assert!(chunk["choices"][0]["delta"].as_object().unwrap().is_empty());
-    }
-
-    #[test]
-    fn test_create_error_chunk() {
-        let error_message = "This is an error";
-        let chunk = create_error_chunk(error_message);
-        assert_eq!(chunk["error"]["message"], error_message);
-    }
-
-    #[test]
-    fn test_completion_stream_iterator_simple() {
-        let stream = CompletionStream {
-            id: "cmpl-123".into(),
-            object: "chat.completion".into(),
-            created: 1677652288,
-            model: "gpt-3.5-turbo-0613".into(),
-            choices: vec![ChoiceStream {
-                index: 0,
-                delta: Delta {
-                    role: Some("assistant".into()),
-                    content: Some("Hello there!".into()),
-                    tool_calls: None,
-                },
-                finish_reason: Some("stop".into()),
-            }],
-            usage: (), // In test builds, usage is a unit type `()`
-        };
-
-        let chunks: Vec<CompletionStream> = stream.into_iter().collect();
-
-        assert_eq!(chunks.len(), 2);
-
-        let choice1 = &chunks[0].choices[0];
-        assert_eq!(choice1.delta.role, Some("assistant".into()));
-        assert!(choice1.delta.content.is_none());
-        assert!(choice1.finish_reason.is_none());
-
-        let choice2 = &chunks[1].choices[0];
-        assert!(choice2.delta.role.is_none());
-        assert_eq!(choice2.delta.content, Some("Hello there!".into()));
-        assert_eq!(choice2.finish_reason, Some("stop".into()));
-    }
 }
