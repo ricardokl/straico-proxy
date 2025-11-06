@@ -1,6 +1,6 @@
 use crate::{
     error::CustomError,
-    streaming::{create_heartbeat_chunk, create_initial_chunk, CompletionStream},
+    streaming::{CompletionStream, SseFormattedChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
 use actix_web::{post, web, HttpResponse};
@@ -56,20 +56,17 @@ pub async fn openai_chat_completion(
             .unwrap()
             .as_secs();
 
-        let initial_chunk = stream::once(future::ready(Ok(Bytes::from(format!(
-            "data: {}\n\n",
-            serde_json::to_string(&create_initial_chunk(&model, &id, created)).unwrap()
-        )))));
+        let initial_chunk = stream::once(future::ready(
+            SseFormattedChunk::from(CompletionStream::initial_chunk(&model, &id, created))
+                .try_into(),
+        ));
 
         let (remote, remote_handle) = straico_response.remote_handle();
 
         let heartbeat = stream::unfold((), |()| async {
             tokio::time::sleep(Duration::from_secs(3)).await;
             Some((
-                Ok(Bytes::from(format!(
-                    "data: {}\n\n",
-                    serde_json::to_string(&create_heartbeat_chunk()).unwrap()
-                ))),
+                SseFormattedChunk::from(CompletionStream::heartbeat_chunk()).try_into(),
                 (),
             ))
         })
@@ -77,10 +74,13 @@ pub async fn openai_chat_completion(
 
         let straico_stream = remote_handle
             .and_then(reqwest::Response::json::<CompletionStream>)
+            .map_ok(SseFormattedChunk::from)
             .map_ok_or_else(|x| Err(x.into()), Bytes::try_from)
             .into_stream();
 
-        let done = stream::once(future::ready(Ok(Bytes::from("data: [DONE]\n\n"))));
+        let done = stream::once(future::ready(
+            SseFormattedChunk::from("[DONE]".to_string()).try_into(),
+        ));
 
         let response_stream = initial_chunk
             .chain(heartbeat)
