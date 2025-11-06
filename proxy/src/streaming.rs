@@ -1,10 +1,15 @@
-use serde::Serialize;
+use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use straico_client::endpoints::chat::common_types::{OpenAiChatMessage, ToolCall};
 use straico_client::endpoints::chat::response_types::{ChatChoice, OpenAiChatResponse, Usage};
+use straico_client::StraicoChatResponse;
 
-#[derive(Serialize, Debug, Clone)]
+use crate::CustomError;
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+#[serde(try_from = "StraicoChatResponse")]
 pub struct CompletionStream {
     pub choices: Vec<ChoiceStream>,
     pub object: Box<str>,
@@ -77,6 +82,21 @@ impl From<OpenAiChatResponse> for CompletionStream {
             created: value.created,
             usage: value.usage,
         }
+    }
+}
+
+impl TryFrom<StraicoChatResponse> for CompletionStream {
+    type Error = CustomError;
+    fn try_from(value: StraicoChatResponse) -> Result<Self, Self::Error> {
+        Ok(OpenAiChatResponse::try_from(value).map(Into::into)?)
+    }
+}
+
+impl TryFrom<CompletionStream> for Bytes {
+    type Error = CustomError;
+    fn try_from(value: CompletionStream) -> Result<Self, Self::Error> {
+        let string = serde_json::to_string(&value)?;
+        Ok(Bytes::from(format!("data: {}\n\n", string)))
     }
 }
 
