@@ -1,6 +1,6 @@
 use crate::{
     error::CustomError,
-    streaming::{CompletionStream, SseFormattedChunk},
+    streaming::{CompletionStream, SseChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
 use actix_web::{post, web, HttpResponse};
@@ -57,29 +57,25 @@ pub async fn openai_chat_completion(
             .as_secs();
 
         let initial_chunk = stream::once(future::ready(
-            SseFormattedChunk::from(CompletionStream::initial_chunk(&model, &id, created))
-                .try_into(),
+            SseChunk::from(CompletionStream::initial_chunk(&model, &id, created)).try_into(),
         ));
 
         let (remote, remote_handle) = straico_response.remote_handle();
 
-        let heartbeat = stream::unfold((), |()| async {
-            tokio::time::sleep(Duration::from_secs(3)).await;
-            Some((
-                SseFormattedChunk::from(CompletionStream::heartbeat_chunk()).try_into(),
-                (),
-            ))
-        })
+        let heartbeat = tokio_stream::StreamExt::throttle(
+            stream::repeat_with(|| SseChunk::from(CompletionStream::heartbeat_chunk()).try_into()),
+            Duration::from_secs(3),
+        )
         .take_until(remote);
 
         let straico_stream = remote_handle
             .and_then(reqwest::Response::json::<CompletionStream>)
-            .map_ok(SseFormattedChunk::from)
+            .map_ok(SseChunk::from)
             .map_ok_or_else(|x| Err(x.into()), Bytes::try_from)
             .into_stream();
 
         let done = stream::once(future::ready(
-            SseFormattedChunk::from("[DONE]".to_string()).try_into(),
+            SseChunk::from("[DONE]".to_string()).try_into(),
         ));
 
         let response_stream = initial_chunk

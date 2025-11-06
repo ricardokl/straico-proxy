@@ -18,10 +18,6 @@ pub enum SseChunk {
     Done(String),
 }
 
-/// Wrapper type that handles SSE formatting with efficient byte serialization
-#[derive(Debug, Clone)]
-pub struct SseFormattedChunk(SseChunk);
-
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(try_from = "StraicoChatResponse")]
 pub struct CompletionStream {
@@ -144,22 +140,22 @@ impl CompletionStream {
     }
 }
 
-impl From<CompletionStream> for SseFormattedChunk {
+impl From<CompletionStream> for SseChunk {
     fn from(stream: CompletionStream) -> Self {
-        Self(SseChunk::Data(stream))
+        SseChunk::Data(stream)
     }
 }
 
-impl From<String> for SseFormattedChunk {
+impl From<String> for SseChunk {
     fn from(done_msg: String) -> Self {
-        Self(SseChunk::Done(done_msg))
+        SseChunk::Done(done_msg)
     }
 }
 
-impl TryFrom<SseFormattedChunk> for Bytes {
+impl TryFrom<SseChunk> for Bytes {
     type Error = CustomError;
-    fn try_from(value: SseFormattedChunk) -> Result<Self, Self::Error> {
-        let json_bytes = match value.0 {
+    fn try_from(value: SseChunk) -> Result<Self, Self::Error> {
+        let json_bytes = match value {
             SseChunk::Data(stream) => serde_json::to_vec(&stream)?,
             SseChunk::Done(msg) => msg.into_bytes(),
         };
@@ -173,14 +169,6 @@ impl TryFrom<SseFormattedChunk> for Bytes {
         Ok(Bytes::from(sse_bytes))
     }
 }
-
-// Keep the old implementation for backward compatibility during transition
-// impl TryFrom<CompletionStream> for Bytes {
-//     type Error = CustomError;
-//     fn try_from(value: CompletionStream) -> Result<Self, Self::Error> {
-//         SseFormattedChunk::from(value).try_into()
-//     }
-// }
 
 pub fn create_error_chunk(error: &str) -> Value {
     json!({
@@ -197,7 +185,7 @@ mod tests {
     use straico_client::endpoints::chat::response_types::Usage;
 
     #[test]
-    fn test_sse_formatted_chunk_data_serialization() {
+    fn test_sse_chunk_data_serialization() {
         let stream = CompletionStream {
             choices: vec![ChoiceStream {
                 index: 0,
@@ -215,7 +203,7 @@ mod tests {
             usage: Usage::default(),
         };
 
-        let sse_chunk = SseFormattedChunk::from(stream);
+        let sse_chunk = SseChunk::from(stream);
         let bytes: Result<Bytes, CustomError> = sse_chunk.try_into();
         assert!(bytes.is_ok());
 
@@ -233,8 +221,8 @@ mod tests {
     }
 
     #[test]
-    fn test_sse_formatted_chunk_done_serialization() {
-        let done_chunk = SseFormattedChunk::from("[DONE]".to_string());
+    fn test_sse_chunk_done_serialization() {
+        let done_chunk = SseChunk::from("[DONE]".to_string());
         let bytes: Result<Bytes, CustomError> = done_chunk.try_into();
         assert!(bytes.is_ok());
 
@@ -273,9 +261,9 @@ mod tests {
     }
 
     #[test]
-    fn test_backward_compatibility_completion_stream_to_bytes() {
+    fn test_completion_stream_to_bytes_via_sse_chunk() {
         let stream = CompletionStream::initial_chunk("test-model", "test-id", 1234567890);
-        let bytes: Result<Bytes, CustomError> = stream.try_into();
+        let bytes: Result<Bytes, CustomError> = SseChunk::from(stream).try_into();
         assert!(bytes.is_ok());
 
         let bytes_str = String::from_utf8(bytes.unwrap().to_vec()).unwrap();
@@ -302,7 +290,7 @@ mod tests {
         let stream = CompletionStream::initial_chunk("test", "id", 123);
 
         // Test new implementation
-        let new_bytes: Bytes = SseFormattedChunk::from(stream.clone()).try_into().unwrap();
+        let new_bytes: Bytes = SseChunk::from(stream.clone()).try_into().unwrap();
 
         // Test old-style implementation (for comparison)
         let old_style = format!("data: {}\n\n", serde_json::to_string(&stream).unwrap());
@@ -322,7 +310,7 @@ mod tests {
         // Benchmark new implementation
         let start = Instant::now();
         for _ in 0..iterations {
-            let _: Bytes = SseFormattedChunk::from(stream.clone()).try_into().unwrap();
+            let _: Bytes = SseChunk::from(stream.clone()).try_into().unwrap();
         }
         let new_duration = start.elapsed();
 
