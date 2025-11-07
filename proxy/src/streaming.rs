@@ -57,13 +57,13 @@ impl From<OpenAiChatMessage> for Delta {
             } => {
                 if let Some(tool_calls) = tool_calls {
                     Self {
-                        role: Some("assistant".into()),
+                        role: None,
                         content: None,
                         tool_calls: Some(tool_calls),
                     }
                 } else {
                     Self {
-                        role: Some("assistant".into()),
+                        role: None,
                         content: content.map(|c| c.to_string().into()),
                         tool_calls: None,
                     }
@@ -88,7 +88,7 @@ impl From<OpenAiChatResponse> for CompletionStream {
     fn from(value: OpenAiChatResponse) -> Self {
         Self {
             choices: value.choices.into_iter().map(Into::into).collect(),
-            object: value.object.into(),
+            object: "chat.completion.chunk".into(),
             id: value.id.into(),
             model: value.model.into(),
             created: value.created,
@@ -130,7 +130,10 @@ impl CompletionStream {
         Self {
             choices: vec![ChoiceStream {
                 index: 0,
-                delta: Delta::default(), // Empty delta
+                delta: Delta {
+                    content: Some("".into()),
+                    ..Default::default()
+                },
                 finish_reason: None,
             }],
             object: "chat.completion.chunk".into(),
