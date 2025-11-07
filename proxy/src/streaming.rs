@@ -16,6 +16,8 @@ pub enum SseChunk {
     Data(CompletionStream),
     /// Done message (typically "[DONE]")
     Done(String),
+    /// Error chunk containing error information
+    Error(Value),
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -152,12 +154,25 @@ impl From<String> for SseChunk {
     }
 }
 
+impl From<Value> for SseChunk {
+    fn from(error_value: Value) -> Self {
+        SseChunk::Error(error_value)
+    }
+}
+
+impl From<CustomError> for SseChunk {
+    fn from(error: CustomError) -> Self {
+        SseChunk::Error(error.to_streaming_chunk())
+    }
+}
+
 impl TryFrom<SseChunk> for Bytes {
     type Error = CustomError;
     fn try_from(value: SseChunk) -> Result<Self, Self::Error> {
         let json_bytes = match value {
             SseChunk::Data(stream) => serde_json::to_vec(&stream)?,
             SseChunk::Done(msg) => msg.into_bytes(),
+            SseChunk::Error(error_value) => serde_json::to_vec(&error_value)?,
         };
 
         // Prepend "data: " and append "\n\n"
@@ -173,7 +188,20 @@ impl TryFrom<SseChunk> for Bytes {
 pub fn create_error_chunk(error: &str) -> Value {
     json!({
         "error": {
-            "message": error
+            "message": error,
+            "type": "server_error",
+            "code": "streaming_error"
+        }
+    })
+}
+
+/// Creates an error chunk with proper OpenAI-compatible error format
+pub fn create_error_chunk_with_type(error: &str, error_type: &str, error_code: Option<&str>) -> Value {
+    json!({
+        "error": {
+            "message": error,
+            "type": error_type,
+            "code": error_code
         }
     })
 }
@@ -231,6 +259,82 @@ mod tests {
     }
 
     #[test]
+    fn test_sse_chunk_error_serialization() {
+        let error_chunk = SseChunk::from(create_error_chunk("Test error message"));
+        let bytes: Result<Bytes, CustomError> = error_chunk.try_into();
+        assert!(bytes.is_ok());
+
+        let bytes_str = String::from_utf8(bytes.unwrap().to_vec()).unwrap();
+        assert!(bytes_str.starts_with("data: "));
+        assert!(bytes_str.ends_with("\n\n"));
+        assert!(bytes_str.contains("Test error message"));
+
+        // Verify JSON structure includes new fields
+        let json_part = &bytes_str[6..bytes_str.len() - 2]; // Remove "data: " and "\n\n"
+        let parsed: serde_json::Value = serde_json::from_str(json_part).unwrap();
+        assert_eq!(parsed["error"]["message"], "Test error message");
+        assert_eq!(parsed["error"]["type"], "server_error");
+        assert_eq!(parsed["error"]["code"], "streaming_error");
+    }
+
+    #[test]
+    fn test_create_error_chunk_with_type() {
+        let error_chunk = create_error_chunk_with_type(
+            "Custom error message",
+            "invalid_request_error",
+            Some("invalid_parameter")
+        );
+
+        assert_eq!(error_chunk["error"]["message"], "Custom error message");
+        assert_eq!(error_chunk["error"]["type"], "invalid_request_error");
+        assert_eq!(error_chunk["error"]["code"], "invalid_parameter");
+    }
+
+    #[test]
+    fn test_custom_error_to_sse_chunk() {
+        let custom_error = CustomError::RequestValidation("Invalid parameter".to_string());
+        let error_chunk = SseChunk::from(custom_error);
+        let bytes: Result<Bytes, CustomError> = error_chunk.try_into();
+        assert!(bytes.is_ok());
+
+        let bytes_str = String::from_utf8(bytes.unwrap().to_vec()).unwrap();
+        assert!(bytes_str.contains("Invalid parameter"));
+    }
+
+    #[test]
+    fn test_streaming_error_flow() {
+        // Simulate the streaming error handling flow
+        use futures::{stream, StreamExt};
+
+        // Create a stream that produces an error
+        let error_stream = stream::iter(vec![
+            Ok(CompletionStream::initial_chunk("test-model", "test-id", 123)),
+            Err(CustomError::RequestValidation("Simulated API error".to_string())),
+        ])
+        .map(|result| match result {
+            Ok(stream) => SseChunk::from(stream).try_into(),
+            Err(error) => SseChunk::from(error).try_into(),
+        });
+
+        // Collect the stream results
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let results: Vec<Result<Bytes, CustomError>> = runtime.block_on(async {
+            error_stream.collect().await
+        });
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].is_ok()); // Initial chunk should succeed
+        assert!(results[1].is_ok()); // Error chunk should also succeed (converted to bytes)
+
+        // Verify the error chunk contains the error message
+        let error_bytes = results[1].as_ref().unwrap();
+        let error_str = String::from_utf8_lossy(error_bytes);
+        assert!(error_str.contains("Simulated API error"));
+        assert!(error_str.starts_with("data: "));
+        assert!(error_str.ends_with("\n\n"));
+    }
+
+    #[test]
     fn test_completion_stream_initial_chunk() {
         let chunk = CompletionStream::initial_chunk("gpt-4", "test-id", 1234567890);
 
@@ -283,6 +387,12 @@ mod tests {
         let done_chunk = SseChunk::Done("[DONE]".to_string());
         let json = serde_json::to_string(&done_chunk).unwrap();
         assert_eq!(json, "\"[DONE]\"");
+
+        // Test Error variant
+        let error_chunk = SseChunk::Error(create_error_chunk("Test error"));
+        let json = serde_json::to_string(&error_chunk).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["error"]["message"], "Test error");
     }
 
     #[test]
