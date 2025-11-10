@@ -131,7 +131,7 @@ impl CompletionStream {
             choices: vec![ChoiceStream {
                 index: 0,
                 delta: Delta {
-                    content: Some("".into()),
+                    content: None,
                     ..Default::default()
                 },
                 finish_reason: None,
