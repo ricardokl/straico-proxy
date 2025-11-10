@@ -176,5 +176,4 @@ mod tests {
             // If we get here, the function didn't panic
         }
     }
-
 }
