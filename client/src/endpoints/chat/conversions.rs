@@ -6,10 +6,13 @@ use super::{
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static TOOL_CALLS_WRAPPING_REGEX: Lazy<Regex> =
+static TOOL_CALLS_WRAPPING_REGEX: Lazy<Regex> = 
     Lazy::new(|| Regex::new(r"(?s)<tool_calls>(.*)</tool_calls>").unwrap());
-static TOOL_CALL_REGEX: Lazy<Regex> =
+static TOOL_CALL_REGEX: Lazy<Regex> = 
     Lazy::new(|| Regex::new(r"<tool_call>(?s)(.*?)</tool_call>").unwrap());
+static GLM_TOOL_CALL_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"<tool_call>\s*(\w+)\s*<arg_key>(?s)(.*?)</arg_value>\s*</tool_call>").unwrap()
+});
 
 /// Generates tool XML for embedding in messages.
 fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> Result<String, ChatError> {
@@ -26,8 +29,24 @@ You are provided with available function signatures within <tools></tools> XML t
 </tools>
 # Tool Calls
 
-Start with the opening tag <tool_calls>. For each tool call, return a json object with function name and arguments within <tool_call></tool_call> tags:
-<tool_call>\"name\": <function-name>, \"arguments\": <args-json-object>}</tool_call>.
+When you need to call tools, you must respond with a `<tool_calls>` block containing a valid JSON array of tool call objects.
+Each object in the array must have "id", "type", and "function" properties.
+The "function" property must be an object with "name" and "arguments".
+The "arguments" property must be a string containing a valid JSON object.
+
+Example of a tool call:
+<tool_calls>
+[
+  {
+    "id": "tool_call_0",
+    "type": "function",
+    "function": {
+      "name": "function_name",
+      "arguments": "{\"arg1\": \"value1\"}"
+    }
+  }
+]
+</tool_calls>
 "###;
 
     let mut tools_message = String::new();
@@ -157,12 +176,11 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                         let mut tool_calls = Vec::new();
 
                         if tool_calls_str.contains("<tool_call>") {
-                            for (i, cap) in TOOL_CALL_REGEX
-                                .captures_iter(tool_calls_str)
-                                .enumerate()
+                            for (i, cap) in
+                                TOOL_CALL_REGEX.captures_iter(tool_calls_str).enumerate()
                             {
                                 if let Some(call_content) = cap.get(1) {
-                                    let function: ChatFunctionCall =
+                                    let function: ChatFunctionCall = 
                                         serde_json::from_str(call_content.as_str().trim())?;
                                     tool_calls.push(ToolCall {
                                         id: format!("tool_call_{}", i),
@@ -194,6 +212,67 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                         }
                     }
                 }
+
+                // GLM-specific parsing
+                if content_str.contains("<tool_call>") {
+                    let mut tool_calls = Vec::new();
+                    for (i, cap) in GLM_TOOL_CALL_REGEX.captures_iter(&content_str).enumerate() {
+                        if let (Some(function_name_match), Some(args_match)) =
+                            (cap.get(1), cap.get(2))
+                        {
+                            let function_name = function_name_match.as_str();
+                            let args_str = args_match.as_str();
+
+                            if let Some((key, value)) = args_str.split_once("\": ") {
+                                let key = key.trim_matches('"');
+                                let value = value.trim().trim_matches('"');
+
+                                let mut arguments = serde_json::Map::new();
+                                arguments.insert(
+                                    key.to_string(),
+                                    serde_json::Value::String(value.to_string()),
+                                );
+                                let arguments_json = serde_json::to_string(&arguments)?;
+
+                                tool_calls.push(ToolCall {
+                                    id: format!("tool_call_{}", i),
+                                    tool_type: "function".to_string(),
+                                    function: ChatFunctionCall {
+                                        name: function_name.to_string(),
+                                        arguments: arguments_json,
+                                    },
+                                });
+                            } else if let Some((key, value)) = args_str.split_once("\":") {
+                                let key = key.trim_matches('"');
+                                let value = value.trim().trim_matches('"');
+
+                                let mut arguments = serde_json::Map::new();
+                                arguments.insert(
+                                    key.to_string(),
+                                    serde_json::Value::String(value.to_string()),
+                                );
+                                let arguments_json = serde_json::to_string(&arguments)?;
+
+                                tool_calls.push(ToolCall {
+                                    id: format!("tool_call_{}", i),
+                                    tool_type: "function".to_string(),
+                                    function: ChatFunctionCall {
+                                        name: function_name.to_string(),
+                                        arguments: arguments_json,
+                                    },
+                                });
+                            }
+                        }
+                    }
+
+                    if !tool_calls.is_empty() {
+                        return Ok(OpenAiChatMessage::Assistant {
+                            content: None,
+                            tool_calls: Some(tool_calls),
+                        });
+                    }
+                }
+
                 Ok(OpenAiChatMessage::Assistant {
                     content: Some(content),
                     tool_calls: None,
@@ -368,8 +447,8 @@ mod tests {
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_tools() {
-        let tool_call1 = r#"{"name":"test_func","arguments":"{}"}"#;
-        let tool_call2 = r#"{"name":"test_func2","arguments":"{\"a\": 1}"}"#;
+        let tool_call1 = r###"{"name":"test_func","arguments":"{}"}"###;
+        let tool_call2 = r###"{"name":"test_func2","arguments":"{\"a\": 1}"}"###;
         let content_str = format!(
             "<tool_calls><tool_call>{}</tool_call><tool_call>{}</tool_call></tool_calls>",
             tool_call1, tool_call2
@@ -413,7 +492,7 @@ mod tests {
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_multiline_tools() {
-        let tool_call_str = r#"{
+        let tool_call_str = r#"{ 
                 "name": "test_func",
                 "arguments": "{}"
             }"#;

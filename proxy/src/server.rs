@@ -84,7 +84,10 @@ pub async fn openai_chat_completion(
         .take_until(remote);
 
         let straico_stream = remote_handle
-            .and_then(reqwest::Response::json::<CompletionStream>)
+            .and_then(reqwest::Response::json::<StraicoChatResponse>)
+            .inspect(|result| println!("\n\n ===== Response: ===== \n\n{:?}", result))
+            .map_ok(|x| CompletionStream::try_from(x).unwrap())
+            .inspect(|result| println!("\n\n ===== CompletionStream: ===== \n\n{:?}", result))
             .map_ok(SseChunk::from)
             .map_err(|e| SseChunk::from(CustomError::from(e)))
             .map(|result| match result {
