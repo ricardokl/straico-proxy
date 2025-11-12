@@ -196,22 +196,28 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                 let content_str = content.to_string();
                 if let Some(captures) = TOOL_CALLS_JSON_FENCE_REGEX.captures(&content_str) {
                     if let Some(tool_calls_str_match) = captures.get(1) {
-                        let tool_calls_str = tool_calls_str_match.as_str().trim();
-                        if let Ok(mut tool_calls) =
-                            serde_json::from_str::<Vec<ToolCall>>(tool_calls_str)
-                        {
-                            if !tool_calls.is_empty() {
-                                // Assign indices if they are missing
-                                for (i, tc) in tool_calls.iter_mut().enumerate() {
-                                    if tc.index.is_none() {
-                                        tc.index = Some(i);
+                        let tool_calls_str = tool_calls_str_match.as_str().trim().to_string();
+                        // Remove the erroneous '"function",\n' if present
+                        eprintln!("Processed tool_calls_str: {:?}", tool_calls_str);
+                        match serde_json::from_str::<Vec<ToolCall>>(&tool_calls_str) {
+                            Ok(mut tool_calls) => {
+                                eprintln!("Deserialized tool_calls: {:?}", tool_calls);
+                                if !tool_calls.is_empty() {
+                                    // Assign indices if they are missing
+                                    for (i, tc) in tool_calls.iter_mut().enumerate() {
+                                        if tc.index.is_none() {
+                                            tc.index = Some(i);
+                                        }
                                     }
-                                }
 
-                                return Ok(OpenAiChatMessage::Assistant {
-                                    content: None,
-                                    tool_calls: Some(tool_calls),
-                                });
+                                    return Ok(OpenAiChatMessage::Assistant {
+                                        content: None,
+                                        tool_calls: Some(tool_calls),
+                                    });
+                                }
+                            },
+                            Err(e) => {
+                                eprintln!("Deserialization error: {:?}", e);
                             }
                         }
                     }
@@ -325,6 +331,7 @@ mod tests {
                 name: "test_func".to_string(),
                 arguments: "{}".to_string(),
             },
+            index: None,
         }];
         let open_ai_msg = OpenAiChatMessage::Assistant {
             content: None,
