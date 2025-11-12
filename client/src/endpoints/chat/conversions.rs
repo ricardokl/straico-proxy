@@ -1,18 +1,13 @@
 use super::{
-    ChatContent, ChatError, ChatFunctionCall, ChatMessage, OpenAiChatMessage, ToolCall,
+    ChatContent, ChatError, ChatMessage, OpenAiChatMessage, ToolCall,
     request_types::{ChatRequest, OpenAiChatRequest, OpenAiTool, StraicoChatRequest},
     response_types::{ChatChoice, OpenAiChatResponse, StraicoChatResponse},
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static TOOL_CALLS_WRAPPING_REGEX: Lazy<Regex> = 
-    Lazy::new(|| Regex::new(r"(?s)<tool_calls>(.*)</tool_calls>").unwrap());
-static TOOL_CALL_REGEX: Lazy<Regex> = 
-    Lazy::new(|| Regex::new(r"<tool_call>(?s)(.*?)</tool_call>").unwrap());
-static GLM_TOOL_CALL_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"<tool_call>\s*(\w+)\s*<arg_key>(?s)(.*?)</arg_value>\s*</tool_call>").unwrap()
-});
+static TOOL_CALLS_JSON_FENCE_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)```").unwrap());
 
 /// Generates tool XML for embedding in messages.
 fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> Result<String, ChatError> {
@@ -29,24 +24,53 @@ You are provided with available function signatures within <tools></tools> XML t
 </tools>
 # Tool Calls
 
-When you need to call tools, you must respond with a `<tool_calls>` block containing a valid JSON array of tool call objects.
-Each object in the array must have "id", "type", and "function" properties.
-The "function" property must be an object with "name" and "arguments".
-The "arguments" property must be a string containing a valid JSON object.
+When you need to call one or more tools, you must respond with a single JSON code block containing an array of tool call objects.
+The JSON array must be enclosed in a ```json fenced code block.
 
-Example of a tool call:
-<tool_calls>
+Each object in the array represents a single tool call and must have the following properties:
+- "id": A unique identifier for the tool call, e.g., "tool_call_0".
+- "type": The type of the tool, which must be "function".
+- "function": An object containing the function name and its arguments.
+
+The "function" object must have the following properties:
+- "name": The name of the function to call.
+- "arguments": A JSON string of the arguments to pass to the function. Note that this must be a STRING containing a valid JSON object, not a nested JSON object.
+
+Example of a single tool call:
+```json
 [
   {
     "id": "tool_call_0",
     "type": "function",
     "function": {
-      "name": "function_name",
-      "arguments": "{\"arg1\": \"value1\"}"
+      "name": "get_weather",
+      "arguments": "{\"location\": \"Boston, MA\"}"
     }
   }
 ]
-</tool_calls>
+```
+
+Example of multiple tool calls:
+```json
+[
+  {
+    "id": "tool_call_0",
+    "type": "function",
+    "function": {
+      "name": "search_web",
+      "arguments": "{\"query\": \"latest AI news\"}"
+    }
+  },
+  {
+    "id": "tool_call_1",
+    "type": "function",
+    "function": {
+      "name": "summarize_text",
+      "arguments": "{\"text\": \"A long text to be summarized...\"}"
+    }
+  }
+]
+```
 "###;
 
     let mut tools_message = String::new();
@@ -134,8 +158,8 @@ impl TryFrom<OpenAiChatMessage> for ChatMessage {
                 tool_calls,
             } => {
                 if let Some(tool_calls) = tool_calls {
-                    let tool_calls_str = serde_json::to_string(&tool_calls)?;
-                    let new_content = format!("<tool_calls>{}</tool_calls>", tool_calls_str);
+                    let tool_calls_str = serde_json::to_string_pretty(&tool_calls)?;
+                    let new_content = format!("```json\n{}\n```", tool_calls_str);
                     ChatMessage::Assistant {
                         content: ChatContent::String(new_content),
                     }
@@ -170,109 +194,23 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
             ChatMessage::User { content } => Ok(OpenAiChatMessage::User { content }),
             ChatMessage::Assistant { content } => {
                 let content_str = content.to_string();
-                if let Some(captures) = TOOL_CALLS_WRAPPING_REGEX.captures(&content_str) {
+                if let Some(captures) = TOOL_CALLS_JSON_FENCE_REGEX.captures(&content_str) {
                     if let Some(tool_calls_str_match) = captures.get(1) {
                         let tool_calls_str = tool_calls_str_match.as_str().trim();
-                        let mut tool_calls = Vec::new();
-
-                        if tool_calls_str.contains("<tool_call>") {
-                            for (i, cap) in
-                                TOOL_CALL_REGEX.captures_iter(tool_calls_str).enumerate()
-                            {
-                                if let Some(call_content) = cap.get(1) {
-                                    let function: ChatFunctionCall = 
-                                        serde_json::from_str(call_content.as_str().trim())?;
-                                    tool_calls.push(ToolCall {
-                                        id: format!("tool_call_{}", i),
-                                        tool_type: "function".to_string(),
-                                        function,
-                                    });
-                                }
-                            }
-                        } else if !tool_calls_str.is_empty() {
-                            // Attempt to parse as Vec<ToolCall>
-                            if let Ok(parsed_tool_calls) = serde_json::from_str(tool_calls_str) {
-                                tool_calls = parsed_tool_calls;
-                            }
-                            // Attempt to parse as a single tool call
-                            else if let Ok(function) = serde_json::from_str(tool_calls_str) {
-                                tool_calls.push(ToolCall {
-                                    id: "tool_call_0".to_string(),
-                                    tool_type: "function".to_string(),
-                                    function,
-                                });
-                            }
-                        }
-
-                        if !tool_calls.is_empty() {
-                            return Ok(OpenAiChatMessage::Assistant {
-                                content: None,
-                                tool_calls: Some(tool_calls),
-                            });
-                        }
-                    }
-                }
-
-                // GLM-specific parsing
-                if content_str.contains("<tool_call>") {
-                    let mut tool_calls = Vec::new();
-                    for (i, cap) in GLM_TOOL_CALL_REGEX.captures_iter(&content_str).enumerate() {
-                        if let (Some(function_name_match), Some(args_match)) =
-                            (cap.get(1), cap.get(2))
+                        if let Ok(tool_calls) =
+                            serde_json::from_str::<Vec<ToolCall>>(tool_calls_str)
                         {
-                            let function_name = function_name_match.as_str();
-                            let args_str = args_match.as_str();
-
-                            if let Some((key, value)) = args_str.split_once("\": ") {
-                                let key = key.trim_matches('"');
-                                let value = value.trim().trim_matches('"');
-
-                                let mut arguments = serde_json::Map::new();
-                                arguments.insert(
-                                    key.to_string(),
-                                    serde_json::Value::String(value.to_string()),
-                                );
-                                let arguments_json = serde_json::to_string(&arguments)?;
-
-                                tool_calls.push(ToolCall {
-                                    id: format!("tool_call_{}", i),
-                                    tool_type: "function".to_string(),
-                                    function: ChatFunctionCall {
-                                        name: function_name.to_string(),
-                                        arguments: arguments_json,
-                                    },
-                                });
-                            } else if let Some((key, value)) = args_str.split_once("\":") {
-                                let key = key.trim_matches('"');
-                                let value = value.trim().trim_matches('"');
-
-                                let mut arguments = serde_json::Map::new();
-                                arguments.insert(
-                                    key.to_string(),
-                                    serde_json::Value::String(value.to_string()),
-                                );
-                                let arguments_json = serde_json::to_string(&arguments)?;
-
-                                tool_calls.push(ToolCall {
-                                    id: format!("tool_call_{}", i),
-                                    tool_type: "function".to_string(),
-                                    function: ChatFunctionCall {
-                                        name: function_name.to_string(),
-                                        arguments: arguments_json,
-                                    },
+                            if !tool_calls.is_empty() {
+                                return Ok(OpenAiChatMessage::Assistant {
+                                    content: None,
+                                    tool_calls: Some(tool_calls),
                                 });
                             }
                         }
                     }
-
-                    if !tool_calls.is_empty() {
-                        return Ok(OpenAiChatMessage::Assistant {
-                            content: None,
-                            tool_calls: Some(tool_calls),
-                        });
-                    }
                 }
 
+                // If no tool calls are found, return content as is.
                 Ok(OpenAiChatMessage::Assistant {
                     content: Some(content),
                     tool_calls: None,
@@ -314,7 +252,7 @@ impl TryFrom<StraicoChatResponse> for OpenAiChatResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::endpoints::chat::{ChatFunctionCall, ToolCall};
+    use crate::endpoints::chat::{ChatContent, ChatFunctionCall, ToolCall};
 
     #[test]
     fn test_openai_to_chat_message_system() {
@@ -371,12 +309,13 @@ mod tests {
         }];
         let open_ai_msg = OpenAiChatMessage::Assistant {
             content: None,
-            tool_calls: Some(tool_calls),
+            tool_calls: Some(tool_calls.clone()),
         };
         let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
         match chat_msg {
             ChatMessage::Assistant { content } => {
-                let expected_str = "<tool_calls>[{\"id\":\"tool1\",\"type\":\"function\",\"function\":{\"name\":\"test_func\",\"arguments\":\"{}\"}}]</tool_calls>";
+                let expected_json = serde_json::to_string_pretty(&tool_calls).unwrap();
+                let expected_str = format!("```json\n{}\n```", expected_json);
                 assert_eq!(content.to_string(), expected_str);
             }
             _ => panic!("Incorrect message type"),
@@ -447,84 +386,8 @@ mod tests {
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_tools() {
-        let tool_call1 = r###"{"name":"test_func","arguments":"{}"}"###;
-        let tool_call2 = r###"{"name":"test_func2","arguments":"{\"a\": 1}"}"###;
-        let content_str = format!(
-            "<tool_calls><tool_call>{}</tool_call><tool_call>{}</tool_call></tool_calls>",
-            tool_call1, tool_call2
-        );
-        let chat_msg = ChatMessage::Assistant {
-            content: ChatContent::String(content_str),
-        };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
-        match open_ai_msg {
-            OpenAiChatMessage::Assistant {
-                content,
-                tool_calls,
-            } => {
-                assert!(content.is_none());
-                let tool_calls = tool_calls.unwrap();
-                assert_eq!(tool_calls.len(), 2);
-
-                assert_eq!(tool_calls[0].id, "tool_call_0");
-                assert_eq!(tool_calls[0].tool_type, "function");
-                assert_eq!(tool_calls[0].function.name, "test_func");
-                assert_eq!(tool_calls[0].function.arguments, "{}");
-
-                assert_eq!(tool_calls[1].id, "tool_call_1");
-                assert_eq!(tool_calls[1].tool_type, "function");
-                assert_eq!(tool_calls[1].function.name, "test_func2");
-                assert_eq!(tool_calls[1].function.arguments, "{\"a\": 1}");
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
-
-    #[test]
-    fn test_chat_to_openai_message_assistant_with_malformed_tools() {
-        let content_str = "<tool_calls><tool_call>malformed json</tool_call></tool_calls>";
-        let chat_msg = ChatMessage::Assistant {
-            content: ChatContent::String(content_str.to_string()),
-        };
-        let open_ai_msg_result: Result<OpenAiChatMessage, _> = chat_msg.try_into();
-        assert!(open_ai_msg_result.is_err());
-    }
-
-    #[test]
-    fn test_chat_to_openai_message_assistant_with_multiline_tools() {
-        let tool_call_str = r#"{ 
-                "name": "test_func",
-                "arguments": "{}"
-            }"#;
-        let content_str = format!(
-            "<tool_calls><tool_call>{}</tool_call></tool_calls>",
-            tool_call_str
-        );
-        let chat_msg = ChatMessage::Assistant {
-            content: ChatContent::String(content_str),
-        };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
-        match open_ai_msg {
-            OpenAiChatMessage::Assistant {
-                content,
-                tool_calls,
-            } => {
-                assert!(content.is_none());
-                let tool_calls = tool_calls.unwrap();
-                assert_eq!(tool_calls.len(), 1);
-                assert_eq!(tool_calls[0].id, "tool_call_0");
-                assert_eq!(tool_calls[0].tool_type, "function");
-                assert_eq!(tool_calls[0].function.name, "test_func");
-                assert_eq!(tool_calls[0].function.arguments, "{}");
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
-
-    #[test]
-    fn test_chat_to_openai_message_assistant_with_json_array_tools() {
-        let tool_calls_str = r#"[{"id":"tool_call_0","type":"function","function":{"name":"view","arguments":"{\"file_path\":\"client/Cargo.toml\"}"}}]"#;
-        let content_str = format!("<tool_calls>{}</tool_calls>", tool_calls_str);
+        let tool_calls_json = r#"[{"id":"tool_call_0","type":"function","function":{"name":"view","arguments":"{\"file_path\":\"client/Cargo.toml\"}"}}]"#;
+        let content_str = format!("```json\n{}\n```", tool_calls_json);
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str),
         };
@@ -548,4 +411,71 @@ mod tests {
             _ => panic!("Incorrect message type"),
         }
     }
+
+    #[test]
+    fn test_chat_to_openai_message_assistant_with_malformed_tools() {
+        let content_str = "```json\nmalformed json\n```";
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str.to_string()),
+        };
+        // This should not error, but result in a message with content and no tool_calls
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
+        match open_ai_msg {
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                assert_eq!(content.unwrap().to_string(), content_str);
+                assert!(tool_calls.is_none());
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
+
+    #[test]
+    fn test_chat_to_openai_message_assistant_with_multiple_tools() {
+        let tool_calls_json = r#"[
+            {
+                "id": "tool_call_0",
+                "type": "function",
+                "function": {
+                    "name": "test_func",
+                    "arguments": "{}"
+                }
+            },
+            {
+                "id": "tool_call_1",
+                "type": "function",
+                "function": {
+                    "name": "test_func2",
+                    "arguments": "{\"a\": 1}"
+                }
+            }
+        ]"#;
+        let content_str = format!("```json\n{}\n```", tool_calls_json);
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str),
+        };
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
+        match open_ai_msg {
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                assert!(content.is_none());
+                let tool_calls = tool_calls.unwrap();
+                assert_eq!(tool_calls.len(), 2);
+
+                assert_eq!(tool_calls[0].id, "tool_call_0");
+                assert_eq!(tool_calls[0].function.name, "test_func");
+                assert_eq!(tool_calls[0].function.arguments, "{}");
+
+                assert_eq!(tool_calls[1].id, "tool_call_1");
+                assert_eq!(tool_calls[1].function.name, "test_func2");
+                assert_eq!(tool_calls[1].function.arguments, "{\"a\": 1}");
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
 }
+
