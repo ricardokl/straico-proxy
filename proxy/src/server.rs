@@ -85,9 +85,29 @@ pub async fn openai_chat_completion(
 
         let straico_stream = remote_handle
             .and_then(reqwest::Response::json::<StraicoChatResponse>)
-            .inspect(|result| println!("\n\n ===== Response: ===== \n\n{:?}", result))
+            .inspect(|result| match result {
+                Ok(response) => {
+                    match serde_json::to_string_pretty(&response.response.choices[0].message) {
+                        Ok(json) => println!("\n\n ===== Response: ===== \n\n{}", json),
+                        Err(e) => {
+                            eprintln!("\n\n ===== JSON Serialization Error: ===== \n\n{:?}", e)
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("\n\n ===== Error: ===== \n\n{:?}", e);
+                }
+            })
             .map_ok(|x| CompletionStream::try_from(x).unwrap())
-            .inspect(|result| println!("\n\n ===== CompletionStream: ===== \n\n{:?}", result))
+            .inspect(|result| match result {
+                Ok(stream) => match serde_json::to_string_pretty(&stream.choices[0].delta) {
+                    Ok(json) => println!("\n\n ===== CompletionStream: ===== \n\n{}", json),
+                    Err(e) => eprintln!("\n\n ===== JSON Serialization Error: ===== \n\n{:?}", e),
+                },
+                Err(e) => {
+                    eprintln!("\n\n ===== Error: ===== \n\n{:?}", e);
+                }
+            })
             .map_ok(SseChunk::from)
             .map_err(|e| SseChunk::from(CustomError::from(e)))
             .map(|result| match result {

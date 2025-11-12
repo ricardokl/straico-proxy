@@ -65,6 +65,9 @@ pub struct ContentObject {
 pub struct ToolCall {
     /// The ID of the tool call
     pub id: String,
+    /// The index of the tool call in the list of tool calls
+    #[serde(default)]
+    pub index: Option<usize>,
     /// The type of the tool (typically "function")
     #[serde(rename = "type")]
     pub tool_type: String,

@@ -197,10 +197,17 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                 if let Some(captures) = TOOL_CALLS_JSON_FENCE_REGEX.captures(&content_str) {
                     if let Some(tool_calls_str_match) = captures.get(1) {
                         let tool_calls_str = tool_calls_str_match.as_str().trim();
-                        if let Ok(tool_calls) =
+                        if let Ok(mut tool_calls) =
                             serde_json::from_str::<Vec<ToolCall>>(tool_calls_str)
                         {
                             if !tool_calls.is_empty() {
+                                // Assign indices if they are missing
+                                for (i, tc) in tool_calls.iter_mut().enumerate() {
+                                    if tc.index.is_none() {
+                                        tc.index = Some(i);
+                                    }
+                                }
+
                                 return Ok(OpenAiChatMessage::Assistant {
                                     content: None,
                                     tool_calls: Some(tool_calls),
