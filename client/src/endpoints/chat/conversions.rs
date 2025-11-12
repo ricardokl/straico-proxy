@@ -236,14 +236,26 @@ impl TryFrom<StraicoChatResponse> for OpenAiChatResponse {
             .choices
             .into_iter()
             .map(|choice| {
-                choice.message.try_into().map(|message| ChatChoice {
+                let open_ai_message: OpenAiChatMessage = choice.message.try_into()?;
+                let finish_reason = match &open_ai_message {
+                    OpenAiChatMessage::Assistant { tool_calls, .. } => {
+                        if tool_calls.is_some() {
+                            "tool_calls".to_string()
+                        } else {
+                            choice.finish_reason
+                        }
+                    },
+                    _ => choice.finish_reason,
+                };
+
+                Ok(ChatChoice {
                     index: choice.index,
-                    message,
-                    finish_reason: choice.finish_reason,
+                    message: open_ai_message,
+                    finish_reason,
                     logprobs: None,
                 })
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Result<Vec<ChatChoice<OpenAiChatMessage>>, ChatError>>()?;
 
         Ok(OpenAiChatResponse {
             id: response.response.id,
