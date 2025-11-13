@@ -9,6 +9,9 @@ use regex::Regex;
 static TOOL_CALLS_JSON_FENCE_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)```").unwrap());
 
+static EXCESS_SLASH_REGEX: Lazy<Regex> = 
+    Lazy::new(|| Regex::new(r#"\\+([{}"\[\]\n])"#).unwrap());
+
 /// Generates tool XML for embedding in messages.
 fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> Result<String, ChatError> {
     let pre_tools = r###"
@@ -223,6 +226,30 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                             }
                             Err(e) => {
                                 eprintln!("Deserialization error: {:?}", e);
+                                // Try to fix excess escaping
+                                let cleaned = EXCESS_SLASH_REGEX.replace_all(&tool_calls_str, r#"\$1"#);
+                                eprintln!("Trying cleaned tool_calls_str: {:?}", cleaned);
+                                match serde_json::from_str::<Vec<ToolCall>>(&cleaned) {
+                                    Ok(mut tool_calls) => {
+                                        eprintln!("Successfully deserialized cleaned tool_calls: {:?}", tool_calls);
+                                        if !tool_calls.is_empty() {
+                                            // Assign indices if they are missing
+                                            for (i, tc) in tool_calls.iter_mut().enumerate() {
+                                                if tc.index.is_none() {
+                                                    tc.index = Some(i);
+                                                }
+                                            }
+
+                                            return Ok(OpenAiChatMessage::Assistant {
+                                                content: None,
+                                                tool_calls: Some(tool_calls),
+                                            });
+                                        }
+                                    }
+                                    Err(e2) => {
+                                        eprintln!("Deserialization error after cleaning: {:?}", e2);
+                                    }
+                                }
                             }
                         }
                     }
