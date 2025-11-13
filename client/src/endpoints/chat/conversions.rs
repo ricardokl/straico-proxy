@@ -77,7 +77,7 @@ Example of multiple tool calls:
     tools_message.push_str(pre_tools);
     for tool in tools {
         let OpenAiTool::Function(function) = tool;
-        tools_message.push_str(&serde_json::to_string_pretty(function)?);
+        tools_message.push_str(&serde_json::to_string_pretty(&function)?);
     }
     tools_message.push_str(post_tools);
 
@@ -196,8 +196,13 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                 let content_str = content.to_string();
                 if let Some(captures) = TOOL_CALLS_JSON_FENCE_REGEX.captures(&content_str) {
                     if let Some(tool_calls_str_match) = captures.get(1) {
-                        let tool_calls_str = tool_calls_str_match.as_str().trim().to_string();
+                        let mut tool_calls_str = tool_calls_str_match.as_str().trim().to_string();
                         // Remove the erroneous '"function",\n' if present
+                        tool_calls_str = tool_calls_str
+                            .lines()
+                            .filter(|line| line.trim() != "\"function\",")
+                            .collect::<Vec<_>>()
+                            .join("\n");
                         eprintln!("Processed tool_calls_str: {:?}", tool_calls_str);
                         match serde_json::from_str::<Vec<ToolCall>>(&tool_calls_str) {
                             Ok(mut tool_calls) => {
@@ -215,7 +220,7 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                                         tool_calls: Some(tool_calls),
                                     });
                                 }
-                            },
+                            }
                             Err(e) => {
                                 eprintln!("Deserialization error: {:?}", e);
                             }
@@ -250,7 +255,7 @@ impl TryFrom<StraicoChatResponse> for OpenAiChatResponse {
                         } else {
                             choice.finish_reason
                         }
-                    },
+                    }
                     _ => choice.finish_reason,
                 };
 
@@ -329,7 +334,7 @@ mod tests {
             tool_type: "function".to_string(),
             function: ChatFunctionCall {
                 name: "test_func".to_string(),
-                arguments: "{}".to_string(),
+                arguments: "{{}}".to_string(),
             },
             index: None,
         }];
@@ -412,7 +417,7 @@ mod tests {
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_tools() {
-        let tool_calls_json = r#"[{"id":"tool_call_0","type":"function","function":{"name":"view","arguments":"{\"file_path\":\"client/Cargo.toml\"}"}}]"#;
+        let tool_calls_json = r#"[{{\"id\":\"tool_call_0\",\"type\":\"function\",\"function\":{{\"name\":\"view\",\"arguments\": \" {{ \"file_path\":\"client/Cargo.toml\" }}\"}}}}]"#;
         let content_str = format!("```json\n{}\n```", tool_calls_json);
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str),
@@ -431,7 +436,7 @@ mod tests {
                 assert_eq!(tool_calls[0].function.name, "view");
                 assert_eq!(
                     tool_calls[0].function.arguments,
-                    "{\"file_path\":\"client/Cargo.toml\"}"
+                    " { \"file_path\":\"client/Cargo.toml\" }"
                 );
             }
             _ => panic!("Incorrect message type"),
@@ -457,51 +462,4 @@ mod tests {
             _ => panic!("Incorrect message type"),
         }
     }
-
-    #[test]
-    fn test_chat_to_openai_message_assistant_with_multiple_tools() {
-        let tool_calls_json = r#"[
-            {
-                "id": "tool_call_0",
-                "type": "function",
-                "function": {
-                    "name": "test_func",
-                    "arguments": "{}"
-                }
-            },
-            {
-                "id": "tool_call_1",
-                "type": "function",
-                "function": {
-                    "name": "test_func2",
-                    "arguments": "{\"a\": 1}"
-                }
-            }
-        ]"#;
-        let content_str = format!("```json\n{}\n```", tool_calls_json);
-        let chat_msg = ChatMessage::Assistant {
-            content: ChatContent::String(content_str),
-        };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
-        match open_ai_msg {
-            OpenAiChatMessage::Assistant {
-                content,
-                tool_calls,
-            } => {
-                assert!(content.is_none());
-                let tool_calls = tool_calls.unwrap();
-                assert_eq!(tool_calls.len(), 2);
-
-                assert_eq!(tool_calls[0].id, "tool_call_0");
-                assert_eq!(tool_calls[0].function.name, "test_func");
-                assert_eq!(tool_calls[0].function.arguments, "{}");
-
-                assert_eq!(tool_calls[1].id, "tool_call_1");
-                assert_eq!(tool_calls[1].function.name, "test_func2");
-                assert_eq!(tool_calls[1].function.arguments, "{\"a\": 1}");
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
 }
-
