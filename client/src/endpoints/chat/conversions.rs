@@ -10,7 +10,7 @@ static TOOL_CALLS_JSON_FENCE_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)```").unwrap());
 
 static EXCESS_SLASH_REGEX: Lazy<Regex> = 
-    Lazy::new(|| Regex::new(r#"\\+([{}"\[\]\n])"#).unwrap());
+    Lazy::new(|| Regex::new(r#"\\{2,}([{}"\[\]\n])"#).unwrap());
 
 /// Generates tool XML for embedding in messages.
 fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> Result<String, ChatError> {
