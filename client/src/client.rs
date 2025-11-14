@@ -129,9 +129,7 @@ impl<T> StraicoRequestBuilder<ApiKeySet, T> {
     /// A Future that resolves to a Result containing either:
     /// - The raw `reqwest::Response`
     /// - A reqwest error if the request fails
-    pub fn send(
-        self,
-    ) -> impl Future<Output = Result<reqwest::Response, reqwest::Error>> {
+    pub fn send(self) -> impl Future<Output = Result<reqwest::Response, reqwest::Error>> {
         self.0.send()
     }
 }

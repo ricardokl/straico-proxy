@@ -8,15 +8,13 @@ impl StraicoClient {
         let url = self
             .base_url
             .unwrap_or_else(|| "https://api.straico.com".to_string())
-            + "/v0/models";
+            + "/v2/models";
         self.client.get(&url).into()
     }
 }
 
 impl StraicoRequestBuilder<ApiKeySet, ()> {
-    pub async fn send_and_parse(
-        self,
-    ) -> Result<ModelsResponse, reqwest::Error> {
+    pub async fn send_and_parse(self) -> Result<ModelsResponse, reqwest::Error> {
         self.0.send().await?.json().await
     }
 }
