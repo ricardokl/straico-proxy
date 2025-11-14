@@ -20,9 +20,9 @@ pub struct PayloadSet;
 /// * `Response` - The expected response type from the API
 //pub struct StraicoRequestBuilder<Api, Payload, Response>(
 pub struct StraicoRequestBuilder<Api, Payload>(
-    RequestBuilder,
-    PhantomData<Payload>,
-    PhantomData<Api>,
+    pub RequestBuilder,
+    pub PhantomData<Payload>,
+    pub PhantomData<Api>,
 );
 
 impl From<Client> for StraicoClient {
@@ -41,8 +41,8 @@ impl From<Client> for StraicoClient {
 /// using `Into<StraicoClient>`.
 #[derive(Clone)]
 pub struct StraicoClient {
-    client: Client,
-    base_url: Option<String>,
+    pub client: Client,
+    pub base_url: Option<String>,
 }
 
 impl Default for StraicoClient {
@@ -113,12 +113,12 @@ impl<K, T: Serialize> StraicoRequestBuilder<K, T> {
     /// # Returns
     ///
     /// A new StraicoRequestBuilder with the PayloadSet state, preserving the API key and response types
-    pub fn json<U: Into<T>>(self, payload: U) -> StraicoRequestBuilder<K, PayloadSet> {
-        self.0.json(&payload.into()).into()
+    pub fn json(self, payload: T) -> StraicoRequestBuilder<K, PayloadSet> {
+        self.0.json(&payload).into()
     }
 }
 
-impl StraicoRequestBuilder<ApiKeySet, PayloadSet> {
+impl<T> StraicoRequestBuilder<ApiKeySet, T> {
     /// Sends the configured request to the API and returns the raw response
     ///
     /// This method will send the HTTP request that has been configured with authentication
