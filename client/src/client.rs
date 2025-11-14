@@ -86,6 +86,20 @@ impl StraicoClient {
             + "/v0/chat/completions";
         self.client.post(&url).into()
     }
+
+    /// Creates a request builder for the models endpoint
+    ///
+    /// # Returns
+    ///
+    /// A `StraicoRequestBuilder` configured for making a models request. The response
+    /// can be sent using [send](StraicoRequestBuilder::send).
+    pub fn models(self) -> StraicoRequestBuilder<NoApiKey, ()> {
+        let url = self
+            .base_url
+            .unwrap_or_else(|| "https://api.straico.com".to_string())
+            + "/v0/models";
+        self.client.get(&url).into()
+    }
 }
 
 impl<T> StraicoRequestBuilder<NoApiKey, T> {
