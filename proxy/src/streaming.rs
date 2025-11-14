@@ -295,7 +295,10 @@ mod tests {
 
     #[test]
     fn test_custom_error_to_sse_chunk() {
-        let custom_error = CustomError::RequestValidation("Invalid parameter".to_string());
+        let custom_error = CustomError::InvalidParameter {
+            parameter: "temperature".to_string(),
+            reason: "Invalid parameter".to_string(),
+        };
         let error_chunk = SseChunk::from(custom_error);
         let bytes: Result<Bytes, CustomError> = error_chunk.try_into();
         assert!(bytes.is_ok());
@@ -312,7 +315,10 @@ mod tests {
         // Create a stream that produces an error
         let error_stream = stream::iter(vec![
             Ok(CompletionStream::initial_chunk("test-model", "test-id", 123)),
-            Err(CustomError::RequestValidation("Simulated API error".to_string())),
+            Err(CustomError::InvalidParameter {
+                parameter: "model".to_string(),
+                reason: "Simulated API error".to_string(),
+            }),
         ])
         .map(|result| match result {
             Ok(stream) => SseChunk::from(stream).try_into(),

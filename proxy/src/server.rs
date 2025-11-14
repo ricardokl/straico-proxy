@@ -109,10 +109,9 @@ pub async fn openai_chat_completion(
                 }
             })
             .map_ok(SseChunk::from)
-            .map_err(|e| SseChunk::from(CustomError::from(e)))
             .map(|result| match result {
                 Ok(chunk) => chunk.try_into(),
-                Err(error_chunk) => error_chunk.try_into(),
+                Err(e) => SseChunk::from(CustomError::from(e)).try_into(),
             })
             .into_stream();
 
