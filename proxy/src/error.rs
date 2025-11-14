@@ -77,11 +77,40 @@ impl CustomError {
 
 impl ResponseError for CustomError {
     fn status_code(&self) -> StatusCode {
-        match *self {
+        match self {
             CustomError::SerdeJson(_) => StatusCode::BAD_REQUEST,
-            CustomError::ReqwestClient(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            CustomError::Straico(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            CustomError::ResponseParse(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            CustomError::ReqwestClient(e) => {
+                // Return specific status codes based on the reqwest error type
+                if e.is_timeout() {
+                    StatusCode::GATEWAY_TIMEOUT
+                } else if e.is_connect() {
+                    StatusCode::BAD_GATEWAY
+                } else if let Some(status) = e.status() {
+                    // Convert reqwest::StatusCode to actix_web::http::StatusCode
+                    StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+                } else {
+                    StatusCode::INTERNAL_SERVER_ERROR
+                }
+            }
+            CustomError::Straico(e) => {
+                // Try to extract status code from StraicoError if it wraps a reqwest error
+                match e {
+                    straico_client::StraicoError::Request(req_err) => {
+                        if req_err.is_timeout() {
+                            StatusCode::GATEWAY_TIMEOUT
+                        } else if req_err.is_connect() {
+                            StatusCode::BAD_GATEWAY
+                        } else if let Some(status) = req_err.status() {
+                            // Convert reqwest::StatusCode to actix_web::http::StatusCode
+                            StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::BAD_GATEWAY)
+                        } else {
+                            StatusCode::BAD_GATEWAY
+                        }
+                    }
+                    _ => StatusCode::BAD_GATEWAY,
+                }
+            }
+            CustomError::ResponseParse(_) => StatusCode::BAD_GATEWAY,
             CustomError::ToolEmbedding(_) => StatusCode::BAD_REQUEST,
             CustomError::MissingRequiredField { .. } => StatusCode::BAD_REQUEST,
             CustomError::InvalidParameter { .. } => StatusCode::BAD_REQUEST,
@@ -205,5 +234,35 @@ mod tests {
         // Should have different error types and codes
         assert!(error_types.len() > 1, "Expected multiple error types, got: {:?}", error_types);
         assert!(error_codes.len() > 1, "Expected multiple error codes, got: {:?}", error_codes);
+    }
+
+    #[test]
+    fn test_reqwest_error_status_codes() {
+        use actix_web::http::StatusCode;
+
+        // Test timeout error returns GATEWAY_TIMEOUT
+        let timeout_url = "http://example.com:81"; // Non-responsive port
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(1))
+            .build()
+            .unwrap();
+        
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let timeout_result = rt.block_on(async {
+            client.get(timeout_url).send().await
+        });
+        
+        if let Err(e) = timeout_result {
+            if e.is_timeout() {
+                let error = CustomError::ReqwestClient(e);
+                assert_eq!(error.status_code(), StatusCode::GATEWAY_TIMEOUT);
+            }
+        }
+    }
+
+    #[test]
+    fn test_response_parse_error_status_code() {
+        let error = CustomError::ResponseParse(serde_json::json!({"error": "test"}));
+        assert_eq!(error.status_code(), actix_web::http::StatusCode::BAD_GATEWAY);
     }
 }
