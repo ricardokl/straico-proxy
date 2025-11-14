@@ -65,6 +65,7 @@ async fn main() -> anyhow::Result<()> {
         App::new()
             .app_data(web::Data::new(app_state))
             .service(server::openai_chat_completion)
+            .service(server::models_handler)
             .default_service(web::to(HttpResponse::NotFound))
     })
     .bind(&addr)

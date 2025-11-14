@@ -3,13 +3,14 @@ use crate::{
     streaming::{CompletionStream, SseChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
-use actix_web::{post, web, HttpResponse};
+use actix_web::{get, post, web, HttpResponse};
 use futures::{future, stream, FutureExt, StreamExt, TryFutureExt};
 use log::{debug, info, warn};
 use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::{client::StraicoClient, StraicoChatRequest};
 use tokio::time::Duration;
 use uuid::Uuid;
+
 /// Safely gets the current Unix timestamp, with fallback for edge cases
 ///
 /// In the extremely unlikely case that the system clock is set before UNIX_EPOCH,
@@ -35,6 +36,33 @@ pub struct AppState {
     pub key: String,
     pub debug: bool,
     pub log: bool,
+}
+
+#[get("/v1/models")]
+pub async fn models_handler(
+    data: web::Data<AppState>,
+) -> Result<HttpResponse, CustomError> {
+    let client = data.client.clone();
+    let straico_response = client
+        .models()
+        .bearer_auth(&data.key)
+        .send()
+        .await?;
+
+    let status_code = actix_web::http::StatusCode::from_u16(straico_response.status().as_u16())
+        .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
+
+    let mut response_builder = HttpResponse::build(status_code);
+
+    // Copy headers from the Straico response to the new response
+    for (name, value) in straico_response.headers().iter() {
+        if let Ok(value_str) = value.to_str() {
+            response_builder.insert_header((name.as_str(), value_str));
+        }
+    }
+
+    let body = straico_response.bytes().await?;
+    Ok(response_builder.body(body))
 }
 
 #[post("/v1/chat/completions")]
