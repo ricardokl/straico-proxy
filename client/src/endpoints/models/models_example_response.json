@@ -1,0 +1,236 @@
+{
+  "data": [
+    {
+      "name": "Amazon: Nova Lite 1.0",
+      "id": "amazon/nova-lite-v1",
+      "word_limit": 225000,
+      "pricing": {
+        "coins": 0.2,
+        "words": 100
+      },
+      "max_output": 5000,
+      "metadata": {
+        "editors_link": "",
+        "editors_choice_level": -1,
+        "cons": [
+          "May not perform strongly on deeply complex textual inference or long-chain reasoning tasks"
+        ],
+        "pros": [
+          "Very low cost and lightning-fast multimodal processing"
+        ],
+        "applications": [
+          "Tutoring",
+          "Social chat",
+          "Writing"
+        ],
+        "capabilities": [],
+        "features": [
+          "Image input"
+        ],
+        "other": [],
+        "icon": "https://prompt-rack.s3.us-east-1.amazonaws.com/model-icons/nova-lite-1.0.png",
+        "model_date": "2024-12-06T00:00:00.000Z"
+      },
+      "owned_by": "amazon",
+      "created": 1733443200,
+      "object": "model",
+      "model_type": "chat"
+    },
+    {
+      "name": "Amazon: Nova Micro 1.0",
+      "id": "amazon/nova-micro-v1",
+      "word_limit": 96000,
+      "pricing": {
+        "coins": 0.1,
+        "words": 100
+      },
+      "max_output": 5000,
+      "metadata": {
+        "editors_link": "",
+        "editors_choice_level": -1,
+        "cons": [
+          "Limited to text-only tasks, lacks multimodal capabilities",
+          "Less advanced reasoning capabilities compared to higher-end models like Nova Pro"
+        ],
+        "pros": [
+          "Lowest latency and most cost-effective in the Amazon Nova family",
+          "Strong in tasks like summarization, translation, interactive chat, classification"
+        ],
+        "applications": [
+          "Writing",
+          "Translation",
+          "Social chat"
+        ],
+        "capabilities": [
+          "Browsing"
+        ],
+        "features": [
+          "Image input"
+        ],
+        "other": [],
+        "icon": "https://prompt-rack.s3.us-east-1.amazonaws.com/model-icons/nova-micro-1.0.png",
+        "model_date": "2024-12-06T00:00:00.000Z"
+      },
+      "owned_by": "amazon",
+      "created": 1733443200,
+      "object": "model",
+      "model_type": "chat"
+    },
+    {
+      "name": "Amazon: Nova Pro 1.0",
+      "id": "amazon/nova-pro-v1",
+      "word_limit": 225000,
+      "pricing": {
+        "coins": 1,
+        "words": 100
+      },
+      "max_output": 5000,
+      "metadata": {
+        "editors_link": "",
+        "editors_choice_level": -1,
+        "cons": [
+          "High capability might lead to increased resource usage for basic applications"
+        ],
+        "pros": [
+          "Outstanding multimodal capabilities\n",
+          "High accuracy, speed, and cost-efficiency",
+          "Exceptional at handling large context input and long workflows"
+        ],
+        "applications": [
+          "Tutoring",
+          "Coding"
+        ],
+        "capabilities": [
+          "Browsing"
+        ],
+        "features": [],
+        "other": [],
+        "icon": "https://prompt-rack.s3.us-east-1.amazonaws.com/model-icons/nova-pro-1.0.png",
+        "model_date": "2024-12-06T00:00:00.000Z"
+      },
+      "owned_by": "amazon",
+      "created": 1733443200,
+      "object": "model",
+      "model_type": "chat"
+    },
+    {
+      "name": "Anthropic: Claude 3 Opus",
+      "id": "anthropic/claude-3-opus",
+      "word_limit": 150000,
+      "pricing": {
+        "coins": 24,
+        "words": 100
+      },
+      "max_output": 4096,
+      "metadata": {
+        "editors_link": "",
+        "editors_choice_level": -1,
+        "cons": [
+          "Refuses to interact with some copywritten work"
+        ],
+        "pros": [
+          "Concise humor",
+          "Strong understanding of creativity",
+          "Outputs longer than previous generations"
+        ],
+        "applications": [
+          "Social chat",
+          "Content"
+        ],
+        "capabilities": [
+          "Browsing"
+        ],
+        "features": [],
+        "other": [],
+        "icon": "https://prompt-rack.s3.us-east-1.amazonaws.com/model-icons/claude-3-opus.png",
+        "model_date": "2024-03-05T00:00:00.000Z"
+      },
+      "owned_by": "anthropic",
+      "created": 1709596800,
+      "object": "model",
+      "model_type": "chat"
+    },
+    {
+      "name": "Anthropic: Claude 3.5 Haiku",
+      "id": "anthropic/claude-3-5-haiku-20241022",
+      "word_limit": 150000,
+      "pricing": {
+        "coins": 1.6,
+        "words": 100
+      },
+      "max_output": 8192,
+      "metadata": {
+        "editors_link": "",
+        "editors_choice_level": -1,
+        "cons": [
+          "Tends to format responses in bullet points, which may not suit all use cases"
+        ],
+        "pros": [
+          "Optimized for speed, coding accuracy, and versatile tool integration",
+          "Excels in data extraction, labeling, and real-time content moderation",
+          "Delivers quick code completions and streamlined development workflows"
+        ],
+        "applications": [
+          "Social chat",
+          "Coding",
+          "Content"
+        ],
+        "capabilities": [
+          "Browsing"
+        ],
+        "features": [],
+        "other": [],
+        "icon": "https://prompt-rack.s3.us-east-1.amazonaws.com/model-icons/claude-3.5-haiku.png",
+        "model_date": "2024-10-23T00:00:00.000Z"
+      },
+      "owned_by": "anthropic",
+      "created": 1729641600,
+      "object": "model",
+      "model_type": "chat"
+    },
+    {
+      "name": "Anthropic: Claude 3.5 Sonnet",
+      "id": "anthropic/claude-3.5-sonnet",
+      "word_limit": 150000,
+      "pricing": {
+        "coins": 4.8,
+        "words": 100
+      },
+      "max_output": 8192,
+      "metadata": {
+        "editors_link": "",
+        "editors_choice_level": -1,
+        "cons": [
+          "Code Hallucinations and Refactoring",
+          "Overzealous Refusals and Ignored Instructions",
+          "Difficulty with Complex Reasoning"
+        ],
+        "pros": [
+          "Creativity in Responses",
+          "Helping users understand new concepts",
+          "Engaging conversations",
+          "Coding Games",
+          "Converting units of measurement"
+        ],
+        "applications": [
+          "Writing",
+          "Social chat",
+          "Content"
+        ],
+        "capabilities": [
+          "Browsing"
+        ],
+        "features": [
+          "Image input"
+        ],
+        "other": [],
+        "icon": "https://prompt-rack.s3.us-east-1.amazonaws.com/model-icons/claude-3.5-sonnet.png",
+        "model_date": "2024-10-23T00:00:00.000Z"
+      },
+      "owned_by": "anthropic",
+      "created": 1729641600,
+      "object": "model",
+      "model_type": "chat"
+    }
+  ]
+}
