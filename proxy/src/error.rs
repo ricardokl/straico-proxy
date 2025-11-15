@@ -25,6 +25,8 @@ pub enum CustomError {
     InvalidParameter { parameter: String, reason: String },
     #[error("Chat error: {0}")]
     Chat(#[from] ChatError),
+    #[error("Bad request: {0}")]
+    BadRequest(String),
 }
 
 
@@ -42,6 +44,7 @@ impl CustomError {
             CustomError::Straico(e) => format!("Upstream API error: {e}"),
             CustomError::ResponseParse(_) => "Failed to parse response from upstream API".to_string(),
             CustomError::Chat(e) => format!("Chat processing error: {e}"),
+            CustomError::BadRequest(e) => format!("Bad request: {e}"),
         };
         create_error_chunk_with_type(&message, self.error_type(), self.error_code())
     }
@@ -57,6 +60,7 @@ impl CustomError {
             CustomError::MissingRequiredField { .. } => "invalid_request_error",
             CustomError::InvalidParameter { .. } => "invalid_request_error",
             CustomError::Chat(_) => "invalid_request_error",
+            CustomError::BadRequest(_) => "invalid_request_error",
         }
     }
 
@@ -71,6 +75,7 @@ impl CustomError {
             CustomError::MissingRequiredField { .. } => Some("missing_field"),
             CustomError::InvalidParameter { .. } => Some("invalid_parameter"),
             CustomError::Chat(_) => Some("chat_error"),
+            CustomError::BadRequest(_) => Some("bad_request"),
         }
     }
 }
@@ -79,6 +84,7 @@ impl ResponseError for CustomError {
     fn status_code(&self) -> StatusCode {
         match self {
             CustomError::SerdeJson(_) => StatusCode::BAD_REQUEST,
+            CustomError::BadRequest(_) => StatusCode::BAD_REQUEST,
             CustomError::ReqwestClient(e) => {
                 // Return specific status codes based on the reqwest error type
                 if e.is_timeout() {
@@ -130,6 +136,7 @@ impl ResponseError for CustomError {
             CustomError::Straico(e) => format!("Upstream API error: {e}"),
             CustomError::ResponseParse(_) => "Failed to parse response from upstream API".to_string(),
             CustomError::Chat(e) => format!("Chat processing error: {e}"),
+            CustomError::BadRequest(e) => format!("Bad request: {e}"),
         };
 
         HttpResponse::build(self.status_code()).json(serde_json::json!({

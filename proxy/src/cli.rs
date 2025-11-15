@@ -30,4 +30,8 @@ pub struct Cli {
     /// Set log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
     pub log_level: String,
+
+    /// Enable router mode to route requests to different providers based on model prefix
+    #[arg(long)]
+    pub router: bool,
 }

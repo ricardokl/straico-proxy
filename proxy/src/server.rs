@@ -1,5 +1,6 @@
 use crate::{
     error::CustomError,
+    router::Provider,
     streaming::{CompletionStream, SseChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
@@ -174,6 +175,167 @@ pub async fn openai_chat_completion(
         let openai_response = OpenAiChatResponse::try_from(straico_response)?;
 
         Ok(HttpResponse::Ok().json(openai_response))
+    }
+}
+
+#[post("/v1/chat/completions")]
+pub async fn router_chat_completion(
+    req: web::Json<OpenAiChatRequest>,
+    data: web::Data<AppState>,
+) -> Result<HttpResponse, CustomError> {
+    let openai_request = req.into_inner();
+    let stream = openai_request.stream;
+
+    if data.debug || data.log {
+        let debug_or_info = format!(
+            "\n\n===== Router Request received (raw): =====\n{}",
+            serde_json::to_string_pretty(&openai_request)?
+        );
+        if data.debug {
+            debug!("{debug_or_info}");
+        }
+        if data.log {
+            info!("{debug_or_info}");
+        }
+    }
+
+    // Parse provider from model prefix
+    let provider = Provider::from_model(&openai_request.chat_request.model)?;
+    
+    // Get API key from environment
+    let api_key = std::env::var(provider.env_var_name())
+        .map_err(|_| CustomError::BadRequest(
+            format!("API key not found for provider: {}. Set {} environment variable.", 
+                provider, provider.env_var_name())
+        ))?;
+
+    if data.debug || data.log {
+        let debug_or_info = format!(
+            "Routing to provider: {} ({})",
+            provider, provider.base_url()
+        );
+        if data.debug {
+            debug!("{debug_or_info}");
+        }
+        if data.log {
+            info!("{debug_or_info}");
+        }
+    }
+
+    // Handle Straico separately (needs conversion)
+    if provider.needs_conversion() {
+        let chat_request = StraicoChatRequest::try_from(openai_request)?;
+        let client = data.client.clone();
+        let model = chat_request.model.clone();
+        let straico_response = client
+            .chat()
+            .bearer_auth(&api_key)
+            .json(chat_request)
+            .send();
+
+        if stream {
+            let id = format!("chatcmpl-{}", Uuid::new_v4());
+            let created = get_current_timestamp();
+
+            let initial_chunk = stream::once(future::ready(
+                SseChunk::from(CompletionStream::initial_chunk(&model, &id, created)).try_into(),
+            ));
+
+            let (remote, remote_handle) = straico_response.remote_handle();
+
+            let heartbeat = tokio_stream::StreamExt::throttle(
+                stream::repeat_with(|| SseChunk::from(CompletionStream::heartbeat_chunk()).try_into()),
+                Duration::from_secs(3),
+            )
+            .take_until(remote);
+
+            let straico_stream = remote_handle
+                .and_then(reqwest::Response::json::<StraicoChatResponse>)
+                .map_ok(|x| CompletionStream::try_from(x).unwrap())
+                .map_ok(SseChunk::from)
+                .map(|result| match result {
+                    Ok(chunk) => chunk.try_into(),
+                    Err(e) => SseChunk::from(CustomError::from(e)).try_into(),
+                })
+                .into_stream();
+
+            let done = stream::once(future::ready(
+                SseChunk::from("[DONE]".to_string()).try_into(),
+            ));
+
+            let response_stream = initial_chunk
+                .chain(heartbeat)
+                .chain(straico_stream)
+                .chain(done);
+
+            Ok(HttpResponse::Ok()
+                .content_type("text/event-stream")
+                .streaming(response_stream))
+        } else {
+            let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
+
+            if data.debug || data.log {
+                let debug_or_info = format!(
+                    "\n\n===== Response from {} (raw): =====\n{}",
+                    provider,
+                    serde_json::to_string_pretty(&straico_response)?
+                );
+                if data.debug {
+                    debug!("{debug_or_info}");
+                }
+                if data.log {
+                    info!("{debug_or_info}");
+                }
+            }
+
+            let openai_response = OpenAiChatResponse::try_from(straico_response)?;
+            Ok(HttpResponse::Ok().json(openai_response))
+        }
+    } else {
+        // Pass through for other providers (no conversion needed)
+        // Strip the provider prefix from the model name
+        let mut modified_request = openai_request.clone();
+        if let Some(model_without_prefix) = modified_request.chat_request.model.split('/').nth(1) {
+            modified_request.chat_request.model = model_without_prefix.to_string();
+        }
+        
+        let http_client = reqwest::Client::new();
+        let response = http_client
+            .post(provider.base_url())
+            .bearer_auth(&api_key)
+            .json(&modified_request)
+            .send()
+            .await?;
+
+        let status_code = actix_web::http::StatusCode::from_u16(response.status().as_u16())
+            .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
+
+        let mut response_builder = HttpResponse::build(status_code);
+
+        // Copy headers from the provider response
+        for (name, value) in response.headers().iter() {
+            if let Ok(value_str) = value.to_str() {
+                response_builder.insert_header((name.as_str(), value_str));
+            }
+        }
+
+        let body = response.bytes().await?;
+
+        if data.debug || data.log {
+            let debug_or_info = format!(
+                "\n\n===== Response from {} (passthrough): =====\n{}",
+                provider,
+                String::from_utf8_lossy(&body)
+            );
+            if data.debug {
+                debug!("{debug_or_info}");
+            }
+            if data.log {
+                info!("{debug_or_info}");
+            }
+        }
+
+        Ok(response_builder.body(body))
     }
 }
 
