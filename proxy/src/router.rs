@@ -1,6 +1,8 @@
 use crate::error::CustomError;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use straico_client::client::StraicoClient;
+use crate::providers::{GenericProvider, ProviderImpl, StraicoProvider};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -54,6 +56,16 @@ impl Provider {
     /// Check if this provider requires response conversion
     pub fn needs_conversion(&self) -> bool {
         matches!(self, Provider::Straico)
+    }
+
+    pub fn get_implementation(&self, client: &StraicoClient) -> ProviderImpl {
+        match self {
+            Provider::Straico => ProviderImpl::Straico(StraicoProvider::new(client.clone())),
+            _ => ProviderImpl::Generic(GenericProvider::new(
+                self.base_url().to_string(),
+                self.to_string(),
+            )),
+        }
     }
 }
 

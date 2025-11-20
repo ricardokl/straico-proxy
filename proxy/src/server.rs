@@ -1,21 +1,21 @@
 use crate::{
     error::CustomError,
     router::Provider,
-    streaming::{CompletionStream, SseChunk},
-    types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
+    types::OpenAiChatRequest,
+    providers::StraicoProvider,
 };
 use actix_web::{get, post, web, HttpResponse};
-use futures::{future, stream, FutureExt, StreamExt, TryFutureExt};
+use futures::TryStreamExt;
 use log::{debug, info, warn};
+#[cfg(test)]
 use std::time::{SystemTime, UNIX_EPOCH};
-use straico_client::{client::StraicoClient, StraicoChatRequest};
-use tokio::time::Duration;
-use uuid::Uuid;
+use straico_client::client::StraicoClient;
 
 /// Safely gets the current Unix timestamp, with fallback for edge cases
 ///
 /// In the extremely unlikely case that the system clock is set before UNIX_EPOCH,
 /// this function will log a warning and return a reasonable fallback timestamp.
+#[cfg(test)]
 fn get_current_timestamp() -> u64 {
     match SystemTime::now().duration_since(UNIX_EPOCH) {
         Ok(duration) => duration.as_secs(),
@@ -31,6 +31,20 @@ fn get_current_timestamp() -> u64 {
     }
 }
 
+/// Helper function to log messages based on debug and log flags
+fn log_message(debug: bool, log: bool, message: &str) {
+    if debug || log {
+        if debug {
+            debug!("{}", message);
+        }
+        if log {
+            info!("{}", message);
+        }
+    }
+}
+
+
+
 #[derive(Clone)]
 pub struct AppState {
     pub client: StraicoClient,
@@ -40,15 +54,9 @@ pub struct AppState {
 }
 
 #[get("/v1/models")]
-pub async fn models_handler(
-    data: web::Data<AppState>,
-) -> Result<HttpResponse, CustomError> {
+pub async fn models_handler(data: web::Data<AppState>) -> Result<HttpResponse, CustomError> {
     let client = data.client.clone();
-    let straico_response = client
-        .models()
-        .bearer_auth(&data.key)
-        .send()
-        .await?;
+    let straico_response = client.models().bearer_auth(&data.key).send().await?;
 
     let status_code = actix_web::http::StatusCode::from_u16(straico_response.status().as_u16())
         .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
@@ -59,11 +67,13 @@ pub async fn models_handler(
     for (name, value) in straico_response.headers().iter() {
         if let Ok(value_str) = value.to_str() {
             response_builder.insert_header((name.as_str(), value_str));
+        } else {
+            warn!("Skipping header with non-ASCII value: {:?}", name);
         }
     }
 
-    let body = straico_response.bytes().await?;
-    Ok(response_builder.body(body))
+    let body_stream = straico_response.bytes_stream().map_err(CustomError::from);
+    Ok(response_builder.streaming(body_stream))
 }
 
 #[post("/v1/chat/completions")]
@@ -72,110 +82,20 @@ pub async fn openai_chat_completion(
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, CustomError> {
     let openai_request = req.into_inner();
-    let stream = openai_request.stream;
 
-    if data.debug || data.log {
-        let debug_or_info = format!(
+    log_message(
+        data.debug,
+        data.log,
+        &format!(
             "\n\n===== Request received (raw): =====\n{}",
             serde_json::to_string_pretty(&openai_request)?
-        );
-        if data.debug {
-            debug!("{debug_or_info}");
-        }
-        if data.log {
-            info!("{debug_or_info}");
-        }
-    }
+        ),
+    );
 
-    let chat_request = StraicoChatRequest::try_from(openai_request)?;
-    let client = data.client.clone();
-    let model = chat_request.model.clone();
-    let straico_response = client
-        .chat()
-        .bearer_auth(&data.key)
-        .json(chat_request)
-        .send();
-
-    if stream {
-        let id = format!("chatcmpl-{}", Uuid::new_v4());
-        let created = get_current_timestamp();
-
-        let initial_chunk = stream::once(future::ready(
-            SseChunk::from(CompletionStream::initial_chunk(&model, &id, created)).try_into(),
-        ));
-
-        let (remote, remote_handle) = straico_response.remote_handle();
-
-        let heartbeat = tokio_stream::StreamExt::throttle(
-            stream::repeat_with(|| SseChunk::from(CompletionStream::heartbeat_chunk()).try_into()),
-            Duration::from_secs(3),
-        )
-        .take_until(remote);
-
-        let straico_stream = remote_handle
-            .and_then(reqwest::Response::json::<StraicoChatResponse>)
-            .inspect(|result| match result {
-                Ok(response) => {
-                    match serde_json::to_string_pretty(&response.response.choices[0].message) {
-                        Ok(json) => println!("\n\n ===== Response: ===== \n\n{}", json),
-                        Err(e) => {
-                            eprintln!("\n\n ===== JSON Serialization Error: ===== \n\n{:?}", e)
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!("\n\n ===== Error: ===== \n\n{:?}", e);
-                }
-            })
-            .map_ok(|x| CompletionStream::try_from(x).unwrap())
-            .inspect(|result| match result {
-                Ok(stream) => match serde_json::to_string_pretty(&stream.choices[0].delta) {
-                    Ok(json) => println!("\n\n ===== CompletionStream: ===== \n\n{}", json),
-                    Err(e) => eprintln!("\n\n ===== JSON Serialization Error: ===== \n\n{:?}", e),
-                },
-                Err(e) => {
-                    eprintln!("\n\n ===== Error: ===== \n\n{:?}", e);
-                }
-            })
-            .map_ok(SseChunk::from)
-            .map(|result| match result {
-                Ok(chunk) => chunk.try_into(),
-                Err(e) => SseChunk::from(CustomError::from(e)).try_into(),
-            })
-            .into_stream();
-
-        let done = stream::once(future::ready(
-            SseChunk::from("[DONE]".to_string()).try_into(),
-        ));
-
-        let response_stream = initial_chunk
-            .chain(heartbeat)
-            .chain(straico_stream)
-            .chain(done);
-
-        Ok(HttpResponse::Ok()
-            .content_type("text/event-stream")
-            .streaming(response_stream))
-    } else {
-        let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
-
-        if data.debug || data.log {
-            let debug_or_info = format!(
-                "\n\n===== Response from Straico (raw): =====\n{}",
-                serde_json::to_string_pretty(&straico_response)?
-            );
-            if data.debug {
-                debug!("{debug_or_info}");
-            }
-            if data.log {
-                info!("{debug_or_info}");
-            }
-        }
-
-        let openai_response = OpenAiChatResponse::try_from(straico_response)?;
-
-        Ok(HttpResponse::Ok().json(openai_response))
-    }
+    let provider = StraicoProvider::new(data.client.clone());
+    provider
+        .chat(openai_request, &data.key, data.debug, data.log)
+        .await
 }
 
 #[post("/v1/chat/completions")]
@@ -184,159 +104,45 @@ pub async fn router_chat_completion(
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, CustomError> {
     let openai_request = req.into_inner();
-    let stream = openai_request.stream;
-
-    if data.debug || data.log {
-        let debug_or_info = format!(
-            "\n\n===== Router Request received (raw): =====\n{}",
-            serde_json::to_string_pretty(&openai_request)?
-        );
-        if data.debug {
-            debug!("{debug_or_info}");
-        }
-        if data.log {
-            info!("{debug_or_info}");
-        }
-    }
 
     // Parse provider from model prefix
     let provider = Provider::from_model(&openai_request.chat_request.model)?;
-    
-    // Get API key from environment
-    let api_key = std::env::var(provider.env_var_name())
-        .map_err(|_| CustomError::BadRequest(
-            format!("API key not found for provider: {}. Set {} environment variable.", 
-                provider, provider.env_var_name())
-        ))?;
 
-    if data.debug || data.log {
-        let debug_or_info = format!(
-            "Routing to provider: {} ({})",
-            provider, provider.base_url()
-        );
-        if data.debug {
-            debug!("{debug_or_info}");
-        }
-        if data.log {
-            info!("{debug_or_info}");
-        }
-    }
+    // Get API key from environment
+    let api_key = std::env::var(provider.env_var_name()).map_err(|_| {
+        CustomError::BadRequest(format!(
+            "API key not found for provider: {}. Set {} environment variable.",
+            provider,
+            provider.env_var_name()
+        ))
+    })?;
 
     // Handle Straico separately (needs conversion)
     if provider.needs_conversion() {
-        let chat_request = StraicoChatRequest::try_from(openai_request)?;
-        let client = data.client.clone();
-        let model = chat_request.model.clone();
-        let straico_response = client
-            .chat()
-            .bearer_auth(&api_key)
-            .json(chat_request)
-            .send();
+        log_message(
+            data.debug,
+            data.log,
+            &format!(
+                "\n\n===== Router Request received (raw): =====\n{}",
+                serde_json::to_string_pretty(&openai_request)?
+            ),
+        );
 
-        if stream {
-            let id = format!("chatcmpl-{}", Uuid::new_v4());
-            let created = get_current_timestamp();
-
-            let initial_chunk = stream::once(future::ready(
-                SseChunk::from(CompletionStream::initial_chunk(&model, &id, created)).try_into(),
-            ));
-
-            let (remote, remote_handle) = straico_response.remote_handle();
-
-            let heartbeat = tokio_stream::StreamExt::throttle(
-                stream::repeat_with(|| SseChunk::from(CompletionStream::heartbeat_chunk()).try_into()),
-                Duration::from_secs(3),
-            )
-            .take_until(remote);
-
-            let straico_stream = remote_handle
-                .and_then(reqwest::Response::json::<StraicoChatResponse>)
-                .map_ok(|x| CompletionStream::try_from(x).unwrap())
-                .map_ok(SseChunk::from)
-                .map(|result| match result {
-                    Ok(chunk) => chunk.try_into(),
-                    Err(e) => SseChunk::from(CustomError::from(e)).try_into(),
-                })
-                .into_stream();
-
-            let done = stream::once(future::ready(
-                SseChunk::from("[DONE]".to_string()).try_into(),
-            ));
-
-            let response_stream = initial_chunk
-                .chain(heartbeat)
-                .chain(straico_stream)
-                .chain(done);
-
-            Ok(HttpResponse::Ok()
-                .content_type("text/event-stream")
-                .streaming(response_stream))
-        } else {
-            let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
-
-            if data.debug || data.log {
-                let debug_or_info = format!(
-                    "\n\n===== Response from {} (raw): =====\n{}",
-                    provider,
-                    serde_json::to_string_pretty(&straico_response)?
-                );
-                if data.debug {
-                    debug!("{debug_or_info}");
-                }
-                if data.log {
-                    info!("{debug_or_info}");
-                }
-            }
-
-            let openai_response = OpenAiChatResponse::try_from(straico_response)?;
-            Ok(HttpResponse::Ok().json(openai_response))
-        }
-    } else {
-        // Pass through for other providers (no conversion needed)
-        // Strip the provider prefix from the model name
-        let mut modified_request = openai_request.clone();
-        if let Some(model_without_prefix) = modified_request.chat_request.model.split('/').nth(1) {
-            modified_request.chat_request.model = model_without_prefix.to_string();
-        }
-        
-        let http_client = reqwest::Client::new();
-        let response = http_client
-            .post(provider.base_url())
-            .bearer_auth(&api_key)
-            .json(&modified_request)
-            .send()
-            .await?;
-
-        let status_code = actix_web::http::StatusCode::from_u16(response.status().as_u16())
-            .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
-
-        let mut response_builder = HttpResponse::build(status_code);
-
-        // Copy headers from the provider response
-        for (name, value) in response.headers().iter() {
-            if let Ok(value_str) = value.to_str() {
-                response_builder.insert_header((name.as_str(), value_str));
-            }
-        }
-
-        let body = response.bytes().await?;
-
-        if data.debug || data.log {
-            let debug_or_info = format!(
-                "\n\n===== Response from {} (passthrough): =====\n{}",
+        log_message(
+            data.debug,
+            data.log,
+            &format!(
+                "Routing to provider: {} ({})",
                 provider,
-                String::from_utf8_lossy(&body)
-            );
-            if data.debug {
-                debug!("{debug_or_info}");
-            }
-            if data.log {
-                info!("{debug_or_info}");
-            }
-        }
-
-        Ok(response_builder.body(body))
+                provider.base_url()
+            ),
+        );
     }
+
+    let implementation = provider.get_implementation(&data.client);
+    implementation
+        .chat(openai_request, &api_key, data.debug, data.log)
+        .await
 }
 
 #[cfg(test)]
