@@ -74,32 +74,41 @@ impl StraicoClient {
         }
     }
 
-    /// Creates a request builder for the new chat endpoint
-    ///
-    /// # Returns
-    ///
-    /// A `StraicoRequestBuilder` configured for making chat completion requests
-    pub fn chat(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest<ChatMessage>> {
-        let url = self
-            .base_url
-            .unwrap_or_else(|| "https://api.straico.com".to_string())
-            + "/v2/chat/completions";
-        self.client.post(&url).into()
-    }
+	    /// Creates a request builder for the new chat endpoint.
+	    ///
+	    /// This corresponds to `POST /v2/chat/completions` on the Straico API.
+	    pub fn chat(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest<ChatMessage>> {
+	        let url = self
+	            .base_url
+	            .unwrap_or_else(|| "https://api.straico.com".to_string())
+	            + "/v2/chat/completions";
+	        self.client.post(&url).into()
+	    }
 
-    /// Creates a request builder for the models endpoint
-    ///
-    /// # Returns
-    ///
-    /// A `StraicoRequestBuilder` configured for making a models request. The response
-    /// can be sent using [send](StraicoRequestBuilder::send).
-    pub fn models(self) -> StraicoRequestBuilder<NoApiKey, ()> {
-        let url = self
-            .base_url
-            .unwrap_or_else(|| "https://api.straico.com".to_string())
-            + "/v2/models";
-        self.client.get(&url).into()
-    }
+	    /// Creates a request builder for listing models.
+	    ///
+	    /// This corresponds to `GET /v2/models` on the Straico API.
+	    pub fn models(self) -> StraicoRequestBuilder<NoApiKey, ()> {
+	        let url = self
+	            .base_url
+	            .unwrap_or_else(|| "https://api.straico.com".to_string())
+	            + "/v2/models";
+	        self.client.get(&url).into()
+	    }
+
+	    /// Creates a request builder for retrieving a single model by ID.
+	    ///
+	    /// This corresponds to `GET /v2/models/{model_id}` on the Straico API.
+	    /// Pass the model ID exactly as returned by the `/v2/models` endpoint
+	    /// (for example: `"amazon/nova-lite-v1"`).
+	    pub fn model(self, model_id: &str) -> StraicoRequestBuilder<NoApiKey, ()> {
+	        let mut url = self
+	            .base_url
+	            .unwrap_or_else(|| "https://api.straico.com".to_string());
+	        url.push_str("/v2/models/");
+	        url.push_str(model_id);
+	        self.client.get(&url).into()
+	    }
 }
 
 impl<T> StraicoRequestBuilder<NoApiKey, T> {

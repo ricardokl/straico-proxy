@@ -88,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
 
     let router_mode = cli.router;
     
-    HttpServer::new(move || {
+	    HttpServer::new(move || {
         let app_state = server::AppState {
             client: StraicoClient::new(),
             key: api_key.clone(),
@@ -96,16 +96,18 @@ async fn main() -> anyhow::Result<()> {
             log: cli.log,
         };
 
-        let mut app = App::new().app_data(web::Data::new(app_state));
+	        let mut app = App::new().app_data(web::Data::new(app_state));
         
-        if router_mode {
-            app = app.service(server::router_chat_completion);
-        } else {
-            app = app.service(server::openai_chat_completion);
-        }
-        
-        app.service(server::models_handler)
-            .default_service(web::to(HttpResponse::NotFound))
+	        if router_mode {
+	            app = app.service(server::router_chat_completion);
+	        } else {
+	            app = app.service(server::openai_chat_completion);
+	        }
+	        
+	        app
+	            .service(server::models_handler)
+	            .service(server::model_handler)
+	            .default_service(web::to(HttpResponse::NotFound))
     })
     .bind(&addr)
     .with_context(|| format!("Failed to bind to address: {addr}"))?

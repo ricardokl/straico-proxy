@@ -1,9 +1,23 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
+/// Response type for listing models via `GET /v2/models`.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ModelsResponse {
+	/// Collection of models returned by the list endpoint.
 	pub data: Vec<ChatModel>,
-	/// Optional success flag returned by the API (present in v2)
+	/// Optional success flag returned by the API (present in v2).
+	#[serde(default)]
+	pub success: Option<bool>,
+}
+
+/// Response type for retrieving a single model via `GET /v2/models/{model_id}`.
+///
+/// The inner `data` object uses the same `ChatModel` representation as the list
+/// endpoint, and additional fields returned by the API are ignored.
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModelResponse {
+	pub data: ChatModel,
 	#[serde(default)]
 	pub success: Option<bool>,
 }
@@ -17,7 +31,12 @@ pub struct ChatModel {
 	pub id: String,
     #[serde(default)]
     pub word_limit: Option<i64>,
-    pub pricing: Pricing,
+    /// Raw pricing information as returned by the API.
+    ///
+    /// Different model types (chat, image, audio, etc.) expose different
+    /// pricing structures, so we keep this as unstructured JSON rather than
+    /// assuming a fixed set of keys.
+    pub pricing: JsonValue,
     #[serde(default)]
     pub max_output: Option<i64>,
     #[serde(default)]
@@ -32,14 +51,8 @@ pub struct ChatModel {
     pub model_type: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Pricing {
-    pub coins: f64,
-    pub words: i64,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Metadata {
+	#[derive(Debug, Deserialize, Serialize)]
+	pub struct Metadata {
     #[serde(default)]
     pub editors_link: String,
     #[serde(default)]
