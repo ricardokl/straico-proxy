@@ -36,7 +36,7 @@ impl Provider {
     /// Get the base URL for this provider
     pub fn base_url(&self) -> &'static str {
         match self {
-            Provider::Straico => "https://api.straico.com/v1",
+            Provider::Straico => "https://api.straico.com/v2",
             Provider::SambaNova => "https://api.sambanova.ai/v1/chat/completions",
             Provider::Cerebras => "https://api.cerebras.ai/v1/chat/completions",
             Provider::Groq => "https://api.groq.com/openai/v1/chat/completions",

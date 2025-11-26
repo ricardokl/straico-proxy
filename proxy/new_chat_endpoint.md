@@ -1,6 +1,6 @@
 # New chat endpoint
 
-- https://api.straico.com/v0/chat/completions
+- https://api.straico.com/v2/chat/completions
 
 ## Available parameters
 

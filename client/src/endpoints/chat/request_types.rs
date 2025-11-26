@@ -5,7 +5,7 @@ use super::common_types::{ChatMessage, OpenAiChatMessage};
 
 /// A request structure for the Straico chat endpoint.
 ///
-/// This struct represents a request to the `/v0/chat/completions` endpoint with support
+/// This struct represents a request to the `/v2/chat/completions` endpoint with support
 /// for the new message format that uses content arrays instead of formatted prompts.
 ///
 /// # Fields

@@ -41,6 +41,32 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
+    if cli.list_models {
+        let client = StraicoClient::new();
+        let response = client
+            .models()
+            .bearer_auth(&api_key)
+            .send()
+            .await
+            .context("Failed to send request to Straico API")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            anyhow::bail!("Failed to fetch models: {} - {}", status, text);
+        }
+
+        let models_response: straico_client::endpoints::models::ModelsResponse = response
+            .json()
+            .await
+            .context("Failed to parse models response")?;
+
+        let json_output = serde_json::to_string_pretty(&models_response)
+            .context("Failed to serialize models response")?;
+        println!("{}", json_output);
+        return Ok(());
+    }
+
     let addr = format!("{}:{}", cli.host, cli.port);
     info!("Starting Straico proxy server...");
     info!("Server is running at http://{addr}");

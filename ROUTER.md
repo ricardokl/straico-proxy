@@ -47,7 +47,8 @@ Each provider requires its own API key set via environment variables:
 1. The router parses the provider prefix from the model name
 2. Retrieves the appropriate API key from environment variables
 3. Routes the request to the correct provider endpoint
-4. For Straico: Converts between OpenAI and Straico formats (streaming and non-streaming)
+4. For Straico: Converts between OpenAI and Straico formats (streaming and non-streaming),
+   calling Straico's v2 chat endpoint (`https://api.straico.com/v2/chat/completions`) internally
 5. For other providers: Passes through the request directly (stripping the provider prefix from model name)
 
 ## Example Request

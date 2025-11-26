@@ -83,7 +83,7 @@ impl StraicoClient {
         let url = self
             .base_url
             .unwrap_or_else(|| "https://api.straico.com".to_string())
-            + "/v0/chat/completions";
+            + "/v2/chat/completions";
         self.client.post(&url).into()
     }
 
@@ -97,7 +97,7 @@ impl StraicoClient {
         let url = self
             .base_url
             .unwrap_or_else(|| "https://api.straico.com".to_string())
-            + "/v0/models";
+            + "/v2/models";
         self.client.get(&url).into()
     }
 }

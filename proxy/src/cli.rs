@@ -34,4 +34,8 @@ pub struct Cli {
     /// Enable router mode to route requests to different providers based on model prefix
     #[arg(long)]
     pub router: bool,
+
+    /// List available models from Straico API
+    #[arg(long)]
+    pub list_models: bool,
 }
