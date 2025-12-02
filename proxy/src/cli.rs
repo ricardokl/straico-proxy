@@ -19,13 +19,7 @@ pub struct Cli {
     #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
     pub api_key: Option<String>,
 
-    /// Print the raw request and response JSON to the console.
-    #[arg(long)]
-    pub debug: bool,
 
-    /// Log the raw request and response JSON to a file.
-    #[arg(long)]
-    pub log: bool,
 
     /// Set log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]

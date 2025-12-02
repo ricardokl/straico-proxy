@@ -1,7 +1,7 @@
 use actix_web::{web, App, HttpResponse, HttpServer};
 use anyhow::Context;
 use clap::Parser;
-use flexi_logger::{FileSpec, Logger, WriteMode};
+use flexi_logger::{Logger, WriteMode};
 use log::{error, info};
 use straico_client::client::StraicoClient;
 use straico_proxy::{cli::Cli, server};
@@ -22,13 +22,7 @@ async fn main() -> anyhow::Result<()> {
         })
         .write_mode(WriteMode::BufferAndFlush);
 
-    if cli.log {
-        logger = logger
-            .log_to_file(FileSpec::default())
-            .duplicate_to_stderr(flexi_logger::Duplicate::All);
-    } else {
-        logger = logger.log_to_stderr();
-    }
+    logger = logger.log_to_stderr();
 
     logger.start()?;
 
@@ -78,13 +72,7 @@ async fn main() -> anyhow::Result<()> {
     
     info!("Completions endpoint is at /v1/chat/completions");
 
-    if cli.debug {
-        info!("Debug mode enabled. Raw request and response will be printed to the console.");
-    }
 
-    if cli.log {
-        info!("Log mode enabled. Raw request and response will be logged to a file.");
-    }
 
     let router_mode = cli.router;
     
@@ -92,8 +80,7 @@ async fn main() -> anyhow::Result<()> {
         let app_state = server::AppState {
             client: StraicoClient::new(),
             key: api_key.clone(),
-            debug: cli.debug,
-            log: cli.log,
+
         };
 
 	        let mut app = App::new().app_data(web::Data::new(app_state));

@@ -215,10 +215,10 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                             .filter(|line| line.trim() != "\"function\",")
                             .collect::<Vec<_>>()
                             .join("\n");
-                        eprintln!("Processed tool_calls_str: {:?}", tool_calls_str);
+
                         match serde_json::from_str::<Vec<ToolCall>>(&tool_calls_str) {
                             Ok(mut tool_calls) => {
-                                eprintln!("Deserialized tool_calls: {:?}", tool_calls);
+
                                 if !tool_calls.is_empty() {
                                     // Assign indices if they are missing
                                     for (i, tc) in tool_calls.iter_mut().enumerate() {
@@ -233,18 +233,15 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                                     });
                                 }
                             }
-                            Err(e) => {
-                                eprintln!("Deserialization error: {:?}", e);
+                            Err(_e) => {
+
                                 // Try to fix excess escaping
                                 let cleaned =
                                     EXCESS_SLASH_REGEX.replace_all(&tool_calls_str, r#"\$1"#);
-                                eprintln!("Trying cleaned tool_calls_str: {:?}", cleaned);
+
                                 match serde_json::from_str::<Vec<ToolCall>>(&cleaned) {
                                     Ok(mut tool_calls) => {
-                                        eprintln!(
-                                            "Successfully deserialized cleaned tool_calls: {:?}",
-                                            tool_calls
-                                        );
+
                                         if !tool_calls.is_empty() {
                                             // Clean arguments strings for over-escaped content
                                             for tc in &mut tool_calls {
@@ -266,8 +263,8 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                                             });
                                         }
                                     }
-                                    Err(e2) => {
-                                        eprintln!("Deserialization error after cleaning: {:?}", e2);
+                                    Err(_e2) => {
+
                                     }
                                 }
                             }

@@ -5,7 +5,7 @@ use crate::{
 };
 use actix_web::HttpResponse;
 use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
-use log::{debug, info};
+
 use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::{client::StraicoClient, StraicoChatRequest};
 use tokio::time::Duration;
@@ -19,17 +19,7 @@ fn get_current_timestamp() -> u64 {
     }
 }
 
-/// Helper function to log messages based on debug and log flags
-fn log_message(debug: bool, log: bool, message: &str) {
-    if debug || log {
-        if debug {
-            debug!("{}", message);
-        }
-        if log {
-            info!("{}", message);
-        }
-    }
-}
+
 
 pub enum ProviderImpl {
     Straico(StraicoProvider),
@@ -41,12 +31,10 @@ impl ProviderImpl {
         &self,
         request: OpenAiChatRequest,
         api_key: &str,
-        debug: bool,
-        log: bool,
     ) -> Result<HttpResponse, CustomError> {
         match self {
-            ProviderImpl::Straico(p) => p.chat(request, api_key, debug, log).await,
-            ProviderImpl::Generic(p) => p.chat(request, api_key, debug, log).await,
+            ProviderImpl::Straico(p) => p.chat(request, api_key).await,
+            ProviderImpl::Generic(p) => p.chat(request, api_key).await,
         }
     }
 }
@@ -107,21 +95,10 @@ impl StraicoProvider {
 
     async fn handle_non_streaming_response(
         straico_response: impl future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
-        debug: bool,
-        log: bool,
-        provider_name: &str,
     ) -> Result<HttpResponse, CustomError> {
         let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
 
-        log_message(
-            debug,
-            log,
-            &format!(
-                "\n\n===== Response from {} (raw): =====\n{}",
-                provider_name,
-                serde_json::to_string_pretty(&straico_response)?
-            ),
-        );
+        
 
         let openai_response = OpenAiChatResponse::try_from(straico_response)?;
         Ok(HttpResponse::Ok().json(openai_response))
@@ -131,8 +108,6 @@ impl StraicoProvider {
         &self,
         request: OpenAiChatRequest,
         api_key: &str,
-        debug: bool,
-        log: bool,
     ) -> Result<HttpResponse, CustomError> {
         let stream = request.stream;
         let chat_request = StraicoChatRequest::try_from(request)?;
@@ -152,7 +127,7 @@ impl StraicoProvider {
         if stream {
             Ok(Self::create_streaming_response(model.unwrap(), straico_response))
         } else {
-            Self::handle_non_streaming_response(straico_response, debug, log, "Straico").await
+            Self::handle_non_streaming_response(straico_response).await
         }
     }
 }
@@ -174,8 +149,6 @@ impl GenericProvider {
         &self,
         mut request: OpenAiChatRequest,
         api_key: &str,
-        _debug: bool,
-        _log: bool,
     ) -> Result<HttpResponse, CustomError> {
         // Strip the provider prefix from the model name
         if let Some(model_without_prefix) = request.chat_request.model.split('/').nth(1) {

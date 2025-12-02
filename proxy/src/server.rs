@@ -6,7 +6,7 @@ use crate::{
 };
 use actix_web::{get, post, web, HttpResponse};
 use futures::TryStreamExt;
-use log::{debug, info, warn};
+use log::warn;
 #[cfg(test)]
 use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::client::StraicoClient;
@@ -31,17 +31,7 @@ fn get_current_timestamp() -> u64 {
     }
 }
 
-/// Helper function to log messages based on debug and log flags
-fn log_message(debug: bool, log: bool, message: &str) {
-    if debug || log {
-        if debug {
-            debug!("{}", message);
-        }
-        if log {
-            info!("{}", message);
-        }
-    }
-}
+
 
 
 
@@ -49,8 +39,6 @@ fn log_message(debug: bool, log: bool, message: &str) {
 pub struct AppState {
     pub client: StraicoClient,
     pub key: String,
-    pub debug: bool,
-    pub log: bool,
 }
 
 #[get("/v1/models")]
@@ -118,18 +106,11 @@ pub async fn openai_chat_completion(
 ) -> Result<HttpResponse, CustomError> {
     let openai_request = req.into_inner();
 
-    log_message(
-        data.debug,
-        data.log,
-        &format!(
-            "\n\n===== Request received (raw): =====\n{}",
-            serde_json::to_string_pretty(&openai_request)?
-        ),
-    );
+    
 
     let provider = StraicoProvider::new(data.client.clone());
     provider
-        .chat(openai_request, &data.key, data.debug, data.log)
+        .chat(openai_request, &data.key)
         .await
 }
 
@@ -154,29 +135,12 @@ pub async fn router_chat_completion(
 
     // Handle Straico separately (needs conversion)
     if provider.needs_conversion() {
-        log_message(
-            data.debug,
-            data.log,
-            &format!(
-                "\n\n===== Router Request received (raw): =====\n{}",
-                serde_json::to_string_pretty(&openai_request)?
-            ),
-        );
-
-        log_message(
-            data.debug,
-            data.log,
-            &format!(
-                "Routing to provider: {} ({})",
-                provider,
-                provider.base_url()
-            ),
-        );
+        
     }
 
     let implementation = provider.get_implementation(&data.client);
     implementation
-        .chat(openai_request, &api_key, data.debug, data.log)
+        .chat(openai_request, &api_key)
         .await
 }
 
