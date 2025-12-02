@@ -1,8 +1,5 @@
 use crate::{
-    error::CustomError,
-    router::Provider,
-    types::OpenAiChatRequest,
-    providers::StraicoProvider,
+    error::CustomError, providers::StraicoProvider, router::Provider, types::OpenAiChatRequest,
 };
 use actix_web::{get, post, web, HttpResponse};
 use futures::TryStreamExt;
@@ -31,10 +28,6 @@ fn get_current_timestamp() -> u64 {
     }
 }
 
-
-
-
-
 #[derive(Clone)]
 pub struct AppState {
     pub client: StraicoClient,
@@ -60,44 +53,44 @@ pub async fn models_handler(data: web::Data<AppState>) -> Result<HttpResponse, C
         }
     }
 
-	    let body_stream = straico_response.bytes_stream().map_err(CustomError::from);
-	    Ok(response_builder.streaming(body_stream))
-	}
+    let body_stream = straico_response.bytes_stream().map_err(CustomError::from);
+    Ok(response_builder.streaming(body_stream))
+}
 
-	/// Proxies a request for a single model to Straico's `GET /v2/models/{model_id}` endpoint.
-	///
-	/// This mirrors OpenAI's `GET /v1/models/{model}` endpoint. The `{model_id}` path
-	/// parameter may contain slashes (e.g. `amazon/nova-lite-v1`), so we capture the
-	/// entire remaining path segment.
-	#[get("/v1/models/{model_id:.*}")]
-	pub async fn model_handler(
-	    data: web::Data<AppState>,
-	    model_id: web::Path<String>,
-	) -> Result<HttpResponse, CustomError> {
-	    let client = data.client.clone();
-	    let straico_response = client
-	        .model(&model_id)
-	        .bearer_auth(&data.key)
-	        .send()
-	        .await?;
+/// Proxies a request for a single model to Straico's `GET /v2/models/{model_id}` endpoint.
+///
+/// This mirrors OpenAI's `GET /v1/models/{model}` endpoint. The `{model_id}` path
+/// parameter may contain slashes (e.g. `amazon/nova-lite-v1`), so we capture the
+/// entire remaining path segment.
+#[get("/v1/models/{model_id:.*}")]
+pub async fn model_handler(
+    data: web::Data<AppState>,
+    model_id: web::Path<String>,
+) -> Result<HttpResponse, CustomError> {
+    let client = data.client.clone();
+    let straico_response = client
+        .model(&model_id)
+        .bearer_auth(&data.key)
+        .send()
+        .await?;
 
-	    let status_code = actix_web::http::StatusCode::from_u16(straico_response.status().as_u16())
-	        .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
+    let status_code = actix_web::http::StatusCode::from_u16(straico_response.status().as_u16())
+        .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
 
-	    let mut response_builder = HttpResponse::build(status_code);
+    let mut response_builder = HttpResponse::build(status_code);
 
-	    // Copy headers from the Straico response to the new response
-	    for (name, value) in straico_response.headers().iter() {
-	        if let Ok(value_str) = value.to_str() {
-	            response_builder.insert_header((name.as_str(), value_str));
-	        } else {
-	            warn!("Skipping header with non-ASCII value: {:?}", name);
-	        }
-	    }
+    // Copy headers from the Straico response to the new response
+    for (name, value) in straico_response.headers().iter() {
+        if let Ok(value_str) = value.to_str() {
+            response_builder.insert_header((name.as_str(), value_str));
+        } else {
+            warn!("Skipping header with non-ASCII value: {:?}", name);
+        }
+    }
 
-	    let body_stream = straico_response.bytes_stream().map_err(CustomError::from);
-	    Ok(response_builder.streaming(body_stream))
-	}
+    let body_stream = straico_response.bytes_stream().map_err(CustomError::from);
+    Ok(response_builder.streaming(body_stream))
+}
 
 #[post("/v1/chat/completions")]
 pub async fn openai_chat_completion(
@@ -106,12 +99,8 @@ pub async fn openai_chat_completion(
 ) -> Result<HttpResponse, CustomError> {
     let openai_request = req.into_inner();
 
-    
-
     let provider = StraicoProvider::new(data.client.clone());
-    provider
-        .chat(openai_request, &data.key)
-        .await
+    provider.chat(openai_request, &data.key).await
 }
 
 #[post("/v1/chat/completions")]
@@ -134,14 +123,10 @@ pub async fn router_chat_completion(
     })?;
 
     // Handle Straico separately (needs conversion)
-    if provider.needs_conversion() {
-        
-    }
+    if provider.needs_conversion() {}
 
     let implementation = provider.get_implementation(&data.client);
-    implementation
-        .chat(openai_request, &api_key)
-        .await
+    implementation.chat(openai_request, &api_key).await
 }
 
 #[cfg(test)]

@@ -199,7 +199,11 @@ pub fn create_error_chunk(error: &str) -> Value {
 }
 
 /// Creates an error chunk with proper OpenAI-compatible error format
-pub fn create_error_chunk_with_type(error: &str, error_type: &str, error_code: Option<&str>) -> Value {
+pub fn create_error_chunk_with_type(
+    error: &str,
+    error_type: &str,
+    error_code: Option<&str>,
+) -> Value {
     json!({
         "error": {
             "message": error,
@@ -285,7 +289,7 @@ mod tests {
         let error_chunk = create_error_chunk_with_type(
             "Custom error message",
             "invalid_request_error",
-            Some("invalid_parameter")
+            Some("invalid_parameter"),
         );
 
         assert_eq!(error_chunk["error"]["message"], "Custom error message");
@@ -314,7 +318,11 @@ mod tests {
 
         // Create a stream that produces an error
         let error_stream = stream::iter(vec![
-            Ok(CompletionStream::initial_chunk("test-model", "test-id", 123)),
+            Ok(CompletionStream::initial_chunk(
+                "test-model",
+                "test-id",
+                123,
+            )),
             Err(CustomError::InvalidParameter {
                 parameter: "model".to_string(),
                 reason: "Simulated API error".to_string(),
@@ -327,9 +335,8 @@ mod tests {
 
         // Collect the stream results
         let runtime = tokio::runtime::Runtime::new().unwrap();
-        let results: Vec<Result<Bytes, CustomError>> = runtime.block_on(async {
-            error_stream.collect().await
-        });
+        let results: Vec<Result<Bytes, CustomError>> =
+            runtime.block_on(async { error_stream.collect().await });
 
         assert_eq!(results.len(), 2);
         assert!(results[0].is_ok()); // Initial chunk should succeed

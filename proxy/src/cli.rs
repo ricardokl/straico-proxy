@@ -19,8 +19,6 @@ pub struct Cli {
     #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
     pub api_key: Option<String>,
 
-
-
     /// Set log level (trace, debug, info, warn, error)
     #[arg(long, default_value = "info")]
     pub log_level: String,

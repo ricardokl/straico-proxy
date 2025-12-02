@@ -19,8 +19,6 @@ fn get_current_timestamp() -> u64 {
     }
 }
 
-
-
 pub enum ProviderImpl {
     Straico(StraicoProvider),
     Generic(GenericProvider),
@@ -98,8 +96,6 @@ impl StraicoProvider {
     ) -> Result<HttpResponse, CustomError> {
         let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
 
-        
-
         let openai_response = OpenAiChatResponse::try_from(straico_response)?;
         Ok(HttpResponse::Ok().json(openai_response))
     }
@@ -116,8 +112,9 @@ impl StraicoProvider {
         } else {
             None
         };
-        
-        let straico_response = self.client
+
+        let straico_response = self
+            .client
             .clone()
             .chat()
             .bearer_auth(api_key)
@@ -125,7 +122,10 @@ impl StraicoProvider {
             .send();
 
         if stream {
-            Ok(Self::create_streaming_response(model.unwrap(), straico_response))
+            Ok(Self::create_streaming_response(
+                model.unwrap(),
+                straico_response,
+            ))
         } else {
             Self::handle_non_streaming_response(straico_response).await
         }

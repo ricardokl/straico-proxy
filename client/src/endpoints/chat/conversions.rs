@@ -218,7 +218,6 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
 
                         match serde_json::from_str::<Vec<ToolCall>>(&tool_calls_str) {
                             Ok(mut tool_calls) => {
-
                                 if !tool_calls.is_empty() {
                                     // Assign indices if they are missing
                                     for (i, tc) in tool_calls.iter_mut().enumerate() {
@@ -234,14 +233,12 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                                 }
                             }
                             Err(_e) => {
-
                                 // Try to fix excess escaping
                                 let cleaned =
                                     EXCESS_SLASH_REGEX.replace_all(&tool_calls_str, r#"\$1"#);
 
                                 match serde_json::from_str::<Vec<ToolCall>>(&cleaned) {
                                     Ok(mut tool_calls) => {
-
                                         if !tool_calls.is_empty() {
                                             // Clean arguments strings for over-escaped content
                                             for tc in &mut tool_calls {
@@ -263,9 +260,7 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                                             });
                                         }
                                     }
-                                    Err(_e2) => {
-
-                                    }
+                                    Err(_e2) => {}
                                 }
                             }
                         }

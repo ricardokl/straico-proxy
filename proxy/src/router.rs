@@ -1,8 +1,8 @@
 use crate::error::CustomError;
+use crate::providers::{GenericProvider, ProviderImpl, StraicoProvider};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use straico_client::client::StraicoClient;
-use crate::providers::{GenericProvider, ProviderImpl, StraicoProvider};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

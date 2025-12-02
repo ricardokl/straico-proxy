@@ -9,5 +9,5 @@ pub use endpoints::chat::{
     OpenAiChatMessage, OpenAiChatRequest, OpenAiChatResponse, StraicoChatRequest,
     StraicoChatResponse,
 };
-pub use error::ClientError;
 pub use endpoints::error::StraicoError;
+pub use error::ClientError;

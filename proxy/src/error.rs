@@ -29,12 +29,12 @@ pub enum CustomError {
     BadRequest(String),
 }
 
-
-
 impl CustomError {
     pub fn to_streaming_chunk(&self) -> Value {
         let message = match self {
-            CustomError::MissingRequiredField { field } => format!("Missing required field: {field}"),
+            CustomError::MissingRequiredField { field } => {
+                format!("Missing required field: {field}")
+            }
             CustomError::InvalidParameter { parameter, reason } => {
                 format!("Invalid parameter '{parameter}': {reason}")
             }
@@ -42,7 +42,9 @@ impl CustomError {
             CustomError::SerdeJson(e) => format!("Invalid JSON: {e}"),
             CustomError::ReqwestClient(e) => format!("Network error: {e}"),
             CustomError::Straico(e) => format!("Upstream API error: {e}"),
-            CustomError::ResponseParse(_) => "Failed to parse response from upstream API".to_string(),
+            CustomError::ResponseParse(_) => {
+                "Failed to parse response from upstream API".to_string()
+            }
             CustomError::Chat(e) => format!("Chat processing error: {e}"),
             CustomError::BadRequest(e) => format!("Bad request: {e}"),
         };
@@ -93,7 +95,8 @@ impl ResponseError for CustomError {
                     StatusCode::BAD_GATEWAY
                 } else if let Some(status) = e.status() {
                     // Convert reqwest::StatusCode to actix_web::http::StatusCode
-                    StatusCode::from_u16(status.as_u16()).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+                    StatusCode::from_u16(status.as_u16())
+                        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
                 } else {
                     StatusCode::INTERNAL_SERVER_ERROR
                 }
@@ -126,7 +129,9 @@ impl ResponseError for CustomError {
 
     fn error_response(&self) -> HttpResponse {
         let error_message = match self {
-            CustomError::MissingRequiredField { field } => format!("Missing required field: {field}"),
+            CustomError::MissingRequiredField { field } => {
+                format!("Missing required field: {field}")
+            }
             CustomError::InvalidParameter { parameter, reason } => {
                 format!("Invalid parameter '{parameter}': {reason}")
             }
@@ -134,7 +139,9 @@ impl ResponseError for CustomError {
             CustomError::SerdeJson(e) => format!("Invalid JSON: {e}"),
             CustomError::ReqwestClient(e) => format!("Network error: {e}"),
             CustomError::Straico(e) => format!("Upstream API error: {e}"),
-            CustomError::ResponseParse(_) => "Failed to parse response from upstream API".to_string(),
+            CustomError::ResponseParse(_) => {
+                "Failed to parse response from upstream API".to_string()
+            }
             CustomError::Chat(e) => format!("Chat processing error: {e}"),
             CustomError::BadRequest(e) => format!("Bad request: {e}"),
         };
@@ -161,10 +168,27 @@ mod tests {
 
         let errors = vec![
             (CustomError::SerdeJson(json_error), "invalid_request_error"),
-            (CustomError::MissingRequiredField { field: "test".to_string() }, "invalid_request_error"),
-            (CustomError::InvalidParameter { parameter: "test".to_string(), reason: "invalid".to_string() }, "invalid_request_error"),
-            (CustomError::ToolEmbedding("test".to_string()), "invalid_request_error"),
-            (CustomError::ResponseParse(serde_json::json!({})), "api_error"),
+            (
+                CustomError::MissingRequiredField {
+                    field: "test".to_string(),
+                },
+                "invalid_request_error",
+            ),
+            (
+                CustomError::InvalidParameter {
+                    parameter: "test".to_string(),
+                    reason: "invalid".to_string(),
+                },
+                "invalid_request_error",
+            ),
+            (
+                CustomError::ToolEmbedding("test".to_string()),
+                "invalid_request_error",
+            ),
+            (
+                CustomError::ResponseParse(serde_json::json!({})),
+                "api_error",
+            ),
         ];
 
         for (error, expected_type) in errors {
@@ -179,10 +203,27 @@ mod tests {
 
         let errors = vec![
             (CustomError::SerdeJson(json_error), Some("invalid_json")),
-            (CustomError::MissingRequiredField { field: "test".to_string() }, Some("missing_field")),
-            (CustomError::InvalidParameter { parameter: "test".to_string(), reason: "invalid".to_string() }, Some("invalid_parameter")),
-            (CustomError::ToolEmbedding("test".to_string()), Some("tool_error")),
-            (CustomError::ResponseParse(serde_json::json!({})), Some("response_parse_error")),
+            (
+                CustomError::MissingRequiredField {
+                    field: "test".to_string(),
+                },
+                Some("missing_field"),
+            ),
+            (
+                CustomError::InvalidParameter {
+                    parameter: "test".to_string(),
+                    reason: "invalid".to_string(),
+                },
+                Some("invalid_parameter"),
+            ),
+            (
+                CustomError::ToolEmbedding("test".to_string()),
+                Some("tool_error"),
+            ),
+            (
+                CustomError::ResponseParse(serde_json::json!({})),
+                Some("response_parse_error"),
+            ),
         ];
 
         for (error, expected_code) in errors {
@@ -192,7 +233,9 @@ mod tests {
 
     #[test]
     fn test_error_response_format() {
-        let error = CustomError::MissingRequiredField { field: "model".to_string() };
+        let error = CustomError::MissingRequiredField {
+            field: "model".to_string(),
+        };
         let response = error.error_response();
 
         // Check status code
@@ -204,13 +247,16 @@ mod tests {
 
     #[test]
     fn test_streaming_chunk_format() {
-        let error = CustomError::InvalidParameter { 
-            parameter: "temperature".to_string(), 
-            reason: "must be between 0 and 2".to_string() 
+        let error = CustomError::InvalidParameter {
+            parameter: "temperature".to_string(),
+            reason: "must be between 0 and 2".to_string(),
         };
         let chunk = error.to_streaming_chunk();
 
-        assert_eq!(chunk["error"]["message"], "Invalid parameter 'temperature': must be between 0 and 2");
+        assert_eq!(
+            chunk["error"]["message"],
+            "Invalid parameter 'temperature': must be between 0 and 2"
+        );
         assert_eq!(chunk["error"]["type"], "invalid_request_error");
         assert_eq!(chunk["error"]["code"], "invalid_parameter");
     }
@@ -222,8 +268,13 @@ mod tests {
 
         let errors = vec![
             CustomError::SerdeJson(json_error),
-            CustomError::MissingRequiredField { field: "model".to_string() },
-            CustomError::InvalidParameter { parameter: "temperature".to_string(), reason: "invalid".to_string() },
+            CustomError::MissingRequiredField {
+                field: "model".to_string(),
+            },
+            CustomError::InvalidParameter {
+                parameter: "temperature".to_string(),
+                reason: "invalid".to_string(),
+            },
             CustomError::ToolEmbedding("tool parse error".to_string()),
             CustomError::ResponseParse(serde_json::json!({})),
         ];
@@ -239,8 +290,16 @@ mod tests {
         }
 
         // Should have different error types and codes
-        assert!(error_types.len() > 1, "Expected multiple error types, got: {:?}", error_types);
-        assert!(error_codes.len() > 1, "Expected multiple error codes, got: {:?}", error_codes);
+        assert!(
+            error_types.len() > 1,
+            "Expected multiple error types, got: {:?}",
+            error_types
+        );
+        assert!(
+            error_codes.len() > 1,
+            "Expected multiple error codes, got: {:?}",
+            error_codes
+        );
     }
 
     #[test]
@@ -253,12 +312,10 @@ mod tests {
             .timeout(std::time::Duration::from_millis(1))
             .build()
             .unwrap();
-        
+
         let rt = tokio::runtime::Runtime::new().unwrap();
-        let timeout_result = rt.block_on(async {
-            client.get(timeout_url).send().await
-        });
-        
+        let timeout_result = rt.block_on(async { client.get(timeout_url).send().await });
+
         if let Err(e) = timeout_result {
             if e.is_timeout() {
                 let error = CustomError::ReqwestClient(e);
@@ -270,6 +327,9 @@ mod tests {
     #[test]
     fn test_response_parse_error_status_code() {
         let error = CustomError::ResponseParse(serde_json::json!({"error": "test"}));
-        assert_eq!(error.status_code(), actix_web::http::StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            error.status_code(),
+            actix_web::http::StatusCode::BAD_GATEWAY
+        );
     }
 }

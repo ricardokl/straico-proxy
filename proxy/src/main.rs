@@ -64,37 +64,33 @@ async fn main() -> anyhow::Result<()> {
     let addr = format!("{}:{}", cli.host, cli.port);
     info!("Starting Straico proxy server...");
     info!("Server is running at http://{addr}");
-    
+
     if cli.router {
         info!("Router mode enabled. Supported providers: straico, sambanova, cerebras, groq");
         info!("Requests will be routed based on model prefix (e.g., 'groq/llama-3.1-70b')");
     }
-    
+
     info!("Completions endpoint is at /v1/chat/completions");
 
-
-
     let router_mode = cli.router;
-    
-	    HttpServer::new(move || {
+
+    HttpServer::new(move || {
         let app_state = server::AppState {
             client: StraicoClient::new(),
             key: api_key.clone(),
-
         };
 
-	        let mut app = App::new().app_data(web::Data::new(app_state));
-        
-	        if router_mode {
-	            app = app.service(server::router_chat_completion);
-	        } else {
-	            app = app.service(server::openai_chat_completion);
-	        }
-	        
-	        app
-	            .service(server::models_handler)
-	            .service(server::model_handler)
-	            .default_service(web::to(HttpResponse::NotFound))
+        let mut app = App::new().app_data(web::Data::new(app_state));
+
+        if router_mode {
+            app = app.service(server::router_chat_completion);
+        } else {
+            app = app.service(server::openai_chat_completion);
+        }
+
+        app.service(server::models_handler)
+            .service(server::model_handler)
+            .default_service(web::to(HttpResponse::NotFound))
     })
     .bind(&addr)
     .with_context(|| format!("Failed to bind to address: {addr}"))?
