@@ -7,8 +7,6 @@ use log::debug;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-
-
 static EXCESS_SLASH_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"\\{2,}([{}"\[\]\n])"#).unwrap());
 
@@ -206,28 +204,30 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
             ChatMessage::User { content } => Ok(OpenAiChatMessage::User { content }),
             ChatMessage::Assistant { content } => {
                 let content_str = content.to_string();
-                
+
                 // Helper to try parsing and cleaning JSON
                 let try_parse = |json_str: &str| -> Option<Vec<ToolCall>> {
-                    let cleaned_lines = json_str.lines()
+                    let cleaned_lines = json_str
+                        .lines()
                         .filter(|line| line.trim() != "\"function\",")
                         .collect::<Vec<_>>()
                         .join("\n");
-                        
+
                     if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_lines) {
                         return Some(calls);
                     }
-                    
+
                     // Try fixing excess escaping
                     let cleaned_escapes = EXCESS_SLASH_REGEX.replace_all(&cleaned_lines, r#"\$1"#);
                     if let Ok(mut calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_escapes) {
-                         // Clean arguments
-                         for tc in &mut calls {
-                             tc.function.arguments = clean_tool_call_arguments(&tc.function.arguments);
-                         }
-                         return Some(calls);
+                        // Clean arguments
+                        for tc in &mut calls {
+                            tc.function.arguments =
+                                clean_tool_call_arguments(&tc.function.arguments);
+                        }
+                        return Some(calls);
                     }
-                    
+
                     None
                 };
 
@@ -250,13 +250,13 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                     if let Some(start_match) = content_str.find("```json") {
                         let start_content_idx = start_match + 7; // length of ```json
                         let content_after_start = &content_str[start_content_idx..];
-                        
+
                         // Find all occurrences of ]\s*```
                         let end_regex = Regex::new(r"\]\s*```").unwrap();
                         for match_ in end_regex.find_iter(content_after_start) {
                             let end_idx = match_.start() + 1;
                             let raw_json = &content_after_start[..end_idx];
-                            
+
                             if let Some(calls) = try_parse(raw_json) {
                                 final_tool_calls = Some(calls);
                                 break;
@@ -307,14 +307,20 @@ impl TryFrom<StraicoChatResponse> for OpenAiChatResponse {
                 };
                 let open_ai_message: OpenAiChatMessage = choice.message.try_into()?;
                 let finish_reason = match &open_ai_message {
-                    OpenAiChatMessage::Assistant { tool_calls, content } => {
+                    OpenAiChatMessage::Assistant {
+                        tool_calls,
+                        content,
+                    } => {
                         if tool_calls.is_some() {
                             "tool_calls".to_string()
                         } else {
                             // Log when no tool call was identified from assistant message
                             debug!(
                                 "No tool call identified in assistant message. Content: {}",
-                                content.as_ref().map(|c| c.to_string()).unwrap_or_else(|| original_content)
+                                content
+                                    .as_ref()
+                                    .map(|c| c.to_string())
+                                    .unwrap_or_else(|| original_content)
                             );
                             choice.finish_reason
                         }
@@ -533,7 +539,7 @@ mod tests {
             "file_path": "README.md",
             "content": "# Title\n\n```bash\ncargo build\n```\n"
         });
-        
+
         // We need to construct the tool call structure manually to match what the LLM sends
         // The LLM sends a JSON array of tool calls
         let tool_calls = vec![serde_json::json!({
@@ -544,10 +550,10 @@ mod tests {
                 "arguments": arguments.to_string() // arguments is a JSON string
             }
         })];
-        
+
         let tool_calls_json = serde_json::to_string_pretty(&tool_calls).unwrap();
         let content_str = format!("```json\n{}\n```", tool_calls_json);
-        
+
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str),
         };
@@ -558,7 +564,10 @@ mod tests {
                 content,
                 tool_calls,
             } => {
-                assert!(content.is_none(), "Content should be None when tool calls are parsed");
+                assert!(
+                    content.is_none(),
+                    "Content should be None when tool calls are parsed"
+                );
                 let tool_calls = tool_calls.expect("Tool calls should be parsed");
                 assert_eq!(tool_calls.len(), 1);
                 assert_eq!(tool_calls[0].id, "tool_call_0");
