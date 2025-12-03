@@ -5,7 +5,7 @@ use crate::{
 };
 use actix_web::HttpResponse;
 use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
-
+use log::error;
 use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::{client::StraicoClient, StraicoChatRequest};
 use tokio::time::Duration;
@@ -96,7 +96,17 @@ impl StraicoProvider {
     ) -> Result<HttpResponse, CustomError> {
         let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
 
-        let openai_response = OpenAiChatResponse::try_from(straico_response)?;
+        let openai_response = match OpenAiChatResponse::try_from(straico_response.clone()) {
+            Ok(response) => response,
+            Err(e) => {
+                error!(
+                    "Failed to convert Straico response to OpenAI format: {}\nRaw Straico Response: {}",
+                    e,
+                    serde_json::to_string_pretty(&straico_response).unwrap_or_default()
+                );
+                return Err(e.into());
+            }
+        };
         Ok(HttpResponse::Ok().json(openai_response))
     }
 

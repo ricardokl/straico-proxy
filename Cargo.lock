@@ -1722,6 +1722,7 @@ name = "straico-client"
 version = "0.2.0"
 dependencies = [
  "futures",
+ "log",
  "once_cell",
  "regex",
  "reqwest",
