@@ -1,12 +1,15 @@
 # Straico Proxy
 
-A proxy server that routes requests to different AI providers based on model prefixes, with special handling for Straico API format conversion.
+A proxy server that enables tool calling and streaming for Straico API, with format conversions to bridge compatibility gaps. "Mileage may vary" as conversions between different API formats are involved.
+
+Router functionality is included as an extra feature for multi-provider support.
 
 ## Features
 
-- Routes requests to multiple AI providers (Straico, SambaNova, Cerebras, Groq)
-- Converts between OpenAI and Straico API formats
-- Supports both streaming and non-streaming responses
+- **Tool calling support** for Straico API
+- **Streaming capabilities** for real-time responses
+- **Format conversions** between OpenAI and Straico API formats
+- **Multi-provider routing** (extra feature) for SambaNova, Cerebras, Groq
 - Simple configuration through environment variables
 
 ## Installation
@@ -17,15 +20,15 @@ cargo install --path .
 
 ## Usage
 
-### Basic Mode
+### Basic Mode (Default)
 
-Start the proxy server:
+Start the proxy server for Straico API with tool calling and streaming:
 
 ```bash
 straico-proxy
 ```
 
-### Router Mode
+### Router Mode (Extra Feature)
 
 Enable router mode to route requests to different providers based on model prefix:
 
