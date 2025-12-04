@@ -89,7 +89,7 @@ impl ChatRequest<ChatMessage> {
     ///
     /// # Returns
     /// A new `ChatRequestBuilder` instance for constructing the request
-    pub fn builder() -> super::ChatRequestBuilder {
-        super::ChatRequestBuilder::default()
+    pub fn builder() -> crate::endpoints::chat::chat_builder::ChatRequestBuilder {
+        crate::endpoints::chat::chat_builder::ChatRequestBuilder::default()
     }
 }

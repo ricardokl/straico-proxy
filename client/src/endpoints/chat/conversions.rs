@@ -19,19 +19,18 @@ fn clean_tool_call_arguments(arguments: &str) -> String {
 
 static REGEX_LITERAL_SLASH_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\\\\{3,}"#).unwrap());
 
-/// Generates tool XML for embedding in messages.
-fn generate_tool_xml(tools: &[OpenAiTool], _model: &str) -> Result<String, ChatError> {
+/// Generates tool system message for embedding in messages.
+fn generate_tool_system_message(tools: &[OpenAiTool]) -> Result<String, ChatError> {
     let pre_tools = r###"
 # Tools
 
 You may call one or more functions to assist with the user query
 
-You are provided with available function signatures within <tools></tools> XML tags:
-<tools>
+You are provided with available function signatures within the following JSON array:
 "###;
 
     let post_tools = r###"
-</tools>
+
 # Tool Calls
 
 When you need to call one or more tools, you must respond with a single JSON code block containing an array of tool call objects.
@@ -85,10 +84,7 @@ Example of multiple tool calls:
 
     let mut tools_message = String::new();
     tools_message.push_str(pre_tools);
-    for tool in tools {
-        let OpenAiTool::Function(function) = tool;
-        tools_message.push_str(&serde_json::to_string_pretty(&function)?);
-    }
+    tools_message.push_str(&serde_json::to_string_pretty(tools)?);
     tools_message.push_str(post_tools);
 
     Ok(tools_message)
@@ -112,8 +108,8 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
                     let OpenAiTool::Function(_) = tool;
                 }
 
-                let tool_xml = generate_tool_xml(&tools, &request.chat_request.model)?;
-                let system_message = ChatMessage::system(tool_xml);
+                let tool_system_message = generate_tool_system_message(&tools)?;
+                let system_message = ChatMessage::system(tool_system_message);
                 new_messages.insert(0, system_message);
 
                 let mut builder = ChatRequest::builder()
