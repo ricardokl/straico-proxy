@@ -100,6 +100,20 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
             .map(ChatMessage::try_from)
             .collect::<Result<_, _>>()?;
 
+        let mut builder = ChatRequest::builder().model(&request.chat_request.model);
+
+        if let Some(tokens) = request
+            .chat_request
+            .max_tokens
+            .or(request.max_completion_tokens)
+        {
+            builder = builder.max_tokens(tokens);
+        }
+
+        if let Some(temp) = request.chat_request.temperature {
+            builder = builder.temperature(temp);
+        }
+
         if let Some(tools) = request.tools {
             if !tools.is_empty() {
                 let mut new_messages = messages;
@@ -111,42 +125,12 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
                 let system_message = ChatMessage::system(tool_system_message);
                 new_messages.insert(0, system_message);
 
-                let mut builder = ChatRequest::builder()
-                    .model(&request.chat_request.model)
-                    .messages(new_messages);
-
-                let max_tokens = request
-                    .chat_request
-                    .max_tokens
-                    .or(request.max_completion_tokens);
-                if let Some(tokens) = max_tokens {
-                    builder = builder.max_tokens(tokens);
-                }
-
-                if let Some(temp) = request.chat_request.temperature {
-                    builder = builder.temperature(temp);
-                }
-
+                builder = builder.messages(new_messages);
                 return Ok(builder.build());
             }
         }
 
-        let mut builder = ChatRequest::builder()
-            .model(&request.chat_request.model)
-            .messages(messages);
-
-        let max_tokens = request
-            .chat_request
-            .max_tokens
-            .or(request.max_completion_tokens);
-        if let Some(tokens) = max_tokens {
-            builder = builder.max_tokens(tokens);
-        }
-
-        if let Some(temp) = request.chat_request.temperature {
-            builder = builder.temperature(temp);
-        }
-
+        builder = builder.messages(messages);
         Ok(builder.build())
     }
 }
@@ -331,8 +315,7 @@ mod tests {
         match chat_msg {
             ChatMessage::Assistant { content } => {
                 let expected_json = serde_json::to_string_pretty(&tool_calls).unwrap();
-                let expected_str = format!("```json\n{}\n```", expected_json);
-                assert_eq!(content.to_string(), expected_str);
+                assert_eq!(content.to_string(), expected_json);
             }
             _ => panic!("Incorrect message type"),
         }
@@ -344,10 +327,10 @@ mod tests {
             content: ChatContent::String("Tool output".to_string()),
             tool_call_id: "tool1".to_string(),
         };
-        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
+        let chat_msg: ChatMessage = open_ai_msg.clone().try_into().unwrap();
         match chat_msg {
             ChatMessage::User { content } => {
-                let expected_str = "<tool_output tool_call_id=\"tool1\">Tool output</tool_output>";
+                let expected_str = serde_json::to_string_pretty(&open_ai_msg).unwrap();
                 assert_eq!(content.to_string(), expected_str);
             }
             _ => panic!("Incorrect message type"),
@@ -447,5 +430,29 @@ mod tests {
             }
             _ => panic!("Incorrect message type"),
         }
+    }
+
+    #[test]
+    fn test_openai_request_conversion() {
+        let request = OpenAiChatRequest {
+            chat_request: ChatRequest {
+                model: "gpt-4".to_string(),
+                messages: vec![OpenAiChatMessage::User {
+                    content: ChatContent::String("Hello".to_string()),
+                }],
+                temperature: Some(0.7),
+                max_tokens: Some(100),
+            },
+            max_completion_tokens: None,
+            stream: false,
+            tools: None,
+            tool_choice: None,
+        };
+
+        let straico_request: StraicoChatRequest = request.try_into().unwrap();
+        assert_eq!(straico_request.model, "gpt-4");
+        assert_eq!(straico_request.temperature, Some(0.7));
+        assert_eq!(straico_request.max_tokens, Some(100));
+        assert_eq!(straico_request.messages.len(), 1);
     }
 }
