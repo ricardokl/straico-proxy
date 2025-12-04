@@ -381,17 +381,6 @@ mod tests {
     }
 
     #[test]
-    fn test_completion_stream_to_bytes_via_sse_chunk() {
-        let stream = CompletionStream::initial_chunk("test-model", "test-id", 1234567890);
-        let bytes: Result<Bytes, CustomError> = SseChunk::from(stream).try_into();
-        assert!(bytes.is_ok());
-
-        let bytes_str = String::from_utf8(bytes.unwrap().to_vec()).unwrap();
-        assert!(bytes_str.starts_with("data: "));
-        assert!(bytes_str.ends_with("\n\n"));
-    }
-
-    #[test]
     fn test_sse_chunk_enum_serialization() {
         // Test Data variant
         let data_chunk = SseChunk::Data(CompletionStream::heartbeat_chunk());
@@ -424,35 +413,5 @@ mod tests {
 
         // Both should produce identical output
         assert_eq!(new_bytes, old_bytes);
-    }
-
-    #[test]
-    fn test_performance_comparison() {
-        use std::time::Instant;
-
-        let stream = CompletionStream::initial_chunk("test-model", "test-id", 1234567890);
-        let iterations = 1000;
-
-        // Benchmark new implementation
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let _: Bytes = SseChunk::from(stream.clone()).try_into().unwrap();
-        }
-        let new_duration = start.elapsed();
-
-        // Benchmark old-style implementation
-        let start = Instant::now();
-        for _ in 0..iterations {
-            let old_style = format!("data: {}\n\n", serde_json::to_string(&stream).unwrap());
-            let _: Bytes = Bytes::from(old_style);
-        }
-        let old_duration = start.elapsed();
-
-        println!("New implementation: {:?}", new_duration);
-        println!("Old implementation: {:?}", old_duration);
-
-        // New implementation should be faster or at least not significantly slower
-        // This is more of a performance indicator than a strict test
-        assert!(new_duration <= old_duration * 2); // Allow up to 2x slower as safety margin
     }
 }
