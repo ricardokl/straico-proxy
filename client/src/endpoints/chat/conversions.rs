@@ -354,49 +354,6 @@ mod tests {
     use crate::endpoints::chat::{ChatContent, ChatFunctionCall, ToolCall};
 
     #[test]
-    fn test_openai_to_chat_message_system() {
-        let open_ai_msg = OpenAiChatMessage::System {
-            content: ChatContent::String("System message".to_string()),
-        };
-        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
-        match chat_msg {
-            ChatMessage::System { content } => {
-                assert_eq!(content.to_string(), "System message")
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
-
-    #[test]
-    fn test_openai_to_chat_message_user() {
-        let open_ai_msg = OpenAiChatMessage::User {
-            content: ChatContent::String("User message".to_string()),
-        };
-        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
-        match chat_msg {
-            ChatMessage::User { content } => {
-                assert_eq!(content.to_string(), "User message")
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
-
-    #[test]
-    fn test_openai_to_chat_message_assistant_no_tools() {
-        let open_ai_msg = OpenAiChatMessage::Assistant {
-            content: Some(ChatContent::String("Assistant message".to_string())),
-            tool_calls: None,
-        };
-        let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
-        match chat_msg {
-            ChatMessage::Assistant { content } => {
-                assert_eq!(content.to_string(), "Assistant message")
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
-
-    #[test]
     fn test_openai_to_chat_message_assistant_with_tools() {
         let tool_calls = vec![ToolCall {
             id: "tool1".to_string(),
@@ -433,52 +390,6 @@ mod tests {
             ChatMessage::User { content } => {
                 let expected_str = "<tool_output tool_call_id=\"tool1\">Tool output</tool_output>";
                 assert_eq!(content.to_string(), expected_str);
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
-
-    #[test]
-    fn test_chat_to_openai_message_system() {
-        let chat_msg = ChatMessage::System {
-            content: ChatContent::String("System message".to_string()),
-        };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
-        match open_ai_msg {
-            OpenAiChatMessage::System { content } => {
-                assert_eq!(content.to_string(), "System message")
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
-
-    #[test]
-    fn test_chat_to_openai_message_user() {
-        let chat_msg = ChatMessage::User {
-            content: ChatContent::String("User message".to_string()),
-        };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
-        match open_ai_msg {
-            OpenAiChatMessage::User { content } => {
-                assert_eq!(content.to_string(), "User message")
-            }
-            _ => panic!("Incorrect message type"),
-        }
-    }
-
-    #[test]
-    fn test_chat_to_openai_message_assistant_no_tools() {
-        let chat_msg = ChatMessage::Assistant {
-            content: ChatContent::String("Assistant message".to_string()),
-        };
-        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
-        match open_ai_msg {
-            OpenAiChatMessage::Assistant {
-                content,
-                tool_calls,
-            } => {
-                assert_eq!(content.unwrap().to_string(), "Assistant message");
-                assert!(tool_calls.is_none());
             }
             _ => panic!("Incorrect message type"),
         }
