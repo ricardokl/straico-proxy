@@ -102,11 +102,7 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
 
         let mut builder = ChatRequest::builder().model(&request.chat_request.model);
 
-        if let Some(tokens) = request
-            .chat_request
-            .max_tokens
-            .or(request.max_completion_tokens)
-        {
+        if let Some(tokens) = request.chat_request.max_tokens {
             builder = builder.max_tokens(tokens);
         }
 
@@ -443,7 +439,6 @@ mod tests {
                 temperature: Some(0.7),
                 max_tokens: Some(100),
             },
-            max_completion_tokens: None,
             stream: false,
             tools: None,
             tool_choice: None,

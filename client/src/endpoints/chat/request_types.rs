@@ -23,6 +23,10 @@ pub struct ChatRequest<T> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
     /// Optional maximum number of tokens to generate
+    ///
+    /// Note: The "max_tokens" field is deprecated in the OpenAI API in favor of "max_completion_tokens".
+    /// However, they serve the same purpose in this context.
+    #[serde(alias = "max_completion_tokens")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
 }
@@ -38,10 +42,7 @@ pub type StraicoChatRequest = ChatRequest<ChatMessage>;
 pub struct OpenAiChatRequest {
     #[serde(flatten)]
     pub chat_request: ChatRequest<OpenAiChatMessage>,
-    /// Optional maximum number of completion tokens (alias for max_tokens)
-    #[serde(alias = "max_completion_tokens")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_completion_tokens: Option<u32>,
+    /// Whether to stream the response
     /// Whether to stream the response
     #[serde(default)]
     pub stream: bool,

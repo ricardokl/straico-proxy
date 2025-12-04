@@ -101,9 +101,8 @@ pub async fn router_chat_completion(
     })?;
 
     // Handle Straico separately (needs conversion)
-    if provider.needs_conversion();
+    if provider.needs_conversion() {};
 
     let implementation = provider.get_implementation(&data.client);
     implementation.chat(openai_request, &api_key).await
 }
-
