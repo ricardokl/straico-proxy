@@ -161,31 +161,16 @@ impl TryFrom<OpenAiChatMessage> for ChatMessage {
             OpenAiChatMessage::Assistant {
                 content,
                 tool_calls,
-            } => {
-                if let Some(tool_calls) = tool_calls {
-                    let tool_calls_str = serde_json::to_string_pretty(&tool_calls)?;
-                    let new_content = format!("```json\n{}\n```", tool_calls_str);
-                    ChatMessage::Assistant {
-                        content: ChatContent::String(new_content),
-                    }
+            } => ChatMessage::Assistant {
+                content: if let Some(tool_calls) = tool_calls {
+                    ChatContent::String(serde_json::to_string_pretty(&tool_calls)?)
                 } else {
-                    ChatMessage::Assistant {
-                        content: content.unwrap_or(ChatContent::String("".to_string())),
-                    }
-                }
-            }
-            OpenAiChatMessage::Tool {
-                content,
-                tool_call_id,
-            } => {
-                let tool_output = format!(
-                    "<tool_output tool_call_id=\"{}\">{}</tool_output>",
-                    tool_call_id, content
-                );
-                ChatMessage::User {
-                    content: ChatContent::String(tool_output),
-                }
-            }
+                    content.unwrap_or(ChatContent::String("".to_string()))
+                },
+            },
+            OpenAiChatMessage::Tool { .. } => ChatMessage::User {
+                content: ChatContent::String(serde_json::to_string_pretty(&message)?),
+            },
         })
     }
 }
