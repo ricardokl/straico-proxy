@@ -27,9 +27,11 @@ fn generate_tool_system_message(tools: &[OpenAiTool]) -> Result<String, ChatErro
 You may call one or more functions to assist with the user query
 
 You are provided with available function signatures within the following JSON array:
+```json
 "###;
 
     let post_tools = r###"
+```
 
 # Tool Calls
 
@@ -229,7 +231,6 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
 
                 let mut final_tool_calls = None;
 
-                // Strategy 1: Primary Heuristic
                 // Look for ```json ... ]\n```
                 let primary_regex = Regex::new(r"(?s)```json\s*(.*?)\]\n```").unwrap();
                 if let Some(captures) = primary_regex.captures(&content_str) {
@@ -237,26 +238,6 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                         let raw_json = format!("{}]", match_.as_str().trim());
                         if let Some(calls) = try_parse(&raw_json) {
                             final_tool_calls = Some(calls);
-                        }
-                    }
-                }
-
-                // Strategy 2: Fallback
-                if final_tool_calls.is_none() {
-                    if let Some(start_match) = content_str.find("```json") {
-                        let start_content_idx = start_match + 7; // length of ```json
-                        let content_after_start = &content_str[start_content_idx..];
-
-                        // Find all occurrences of ]\s*```
-                        let end_regex = Regex::new(r"\]\s*```").unwrap();
-                        for match_ in end_regex.find_iter(content_after_start) {
-                            let end_idx = match_.start() + 1;
-                            let raw_json = &content_after_start[..end_idx];
-
-                            if let Some(calls) = try_parse(raw_json) {
-                                final_tool_calls = Some(calls);
-                                break;
-                            }
                         }
                     }
                 }
