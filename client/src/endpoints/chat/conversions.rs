@@ -84,10 +84,12 @@ Example of multiple tool calls:
 ```
 "###;
 
-    let mut tools_message = String::new();
-    tools_message.push_str(pre_tools);
-    tools_message.push_str(&serde_json::to_string_pretty(tools)?);
-    tools_message.push_str(post_tools);
+    let tools_message = format!(
+        "{}{}{}",
+        pre_tools,
+        serde_json::to_string_pretty(tools)?,
+        post_tools
+    );
 
     Ok(tools_message)
 }
