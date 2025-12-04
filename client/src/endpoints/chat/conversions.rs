@@ -21,16 +21,16 @@ static REGEX_LITERAL_SLASH_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\\\\{
 
 /// Generates tool system message for embedding in messages.
 fn generate_tool_system_message(tools: &[OpenAiTool]) -> Result<String, ChatError> {
-    let pre_tools = r###"
+    Ok(format!(
+        r###"
 # Tools
 
 You may call one or more functions to assist with the user query
 
 You are provided with available function signatures within the following JSON array:
-```json
-"###;
 
-    let post_tools = r###"
+```json
+{}
 ```
 
 # Tool Calls
@@ -48,50 +48,45 @@ The "function" object must have the following properties:
 - "arguments": A JSON string of the arguments to pass to the function. Note that this must be a STRING containing a valid JSON object, not a nested JSON object.
 
 Example of a single tool call:
+
 ```json
 [
-  {
+  {{
     "id": "tool_call_0",
     "type": "function",
-    "function": {
+    "function": {{
       "name": "get_weather",
-      "arguments": "{\"location\": \"Boston, MA\"}"
-    }
-  }
+      "arguments": "{{\"location\": \"Boston, MA\"}}"
+    }}
+  }}
 ]
 ```
 
 Example of multiple tool calls:
+
 ```json
 [
-  {
+  {{
     "id": "tool_call_0",
     "type": "function",
-    "function": {
+    "function": {{
       "name": "search_web",
-      "arguments": "{\"query\": \"latest AI news\"}"
-    }
-  },
-  {
+      "arguments": "{{\"query\": \"latest AI news\"}}"
+    }}
+  }},
+  {{
     "id": "tool_call_1",
     "type": "function",
-    "function": {
+    "function": {{
       "name": "summarize_text",
-      "arguments": "{\"text\": \"A long text to be summarized...\"}"
-    }
-  }
+      "arguments": "{{\"text\": \"A long text to be summarized...\"}}"
+    }}
+  }}
 ]
 ```
-"###;
-
-    let tools_message = format!(
-        "{}{}{}",
-        pre_tools,
+"###,
         serde_json::to_string_pretty(tools)?,
-        post_tools
-    );
-
-    Ok(tools_message)
+    ))
 }
 
 impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
