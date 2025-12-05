@@ -137,12 +137,7 @@ The proxy can convert between OpenAI format and Straico's API format. Straico's 
 - max_tokens: number
 - messages: Object with role and content fields
 
-## Development
 
-```bash
-cargo build
-cargo test
-```
 
 ## License
 
