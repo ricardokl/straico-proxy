@@ -10,11 +10,46 @@ use regex::Regex;
 static CLEANUP_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(\\{2,}([{}"\[\]\n]))|(\\\\{3,})"#).unwrap());
 
+static XML_TOOL_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"(?s)<tool_code>.*?</tool_code>|(?s)<tool_calls>.*?</tool_calls>|(?s)<function_calls>.*?</function_calls>").unwrap()
+});
+
+static CHATML_TOOL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)<\|im_start\|>tool.*?<\|im_end\|>").unwrap());
+
+static JSON_TOOL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)\]\n```").unwrap());
+
+/// Helper to try parsing and cleaning JSON
+fn try_parse_json_tool_calls(json_str: &str) -> Option<Vec<ToolCall>> {
+    let cleaned_lines = json_str
+        .lines()
+        .filter(|line| line.trim() != "\"function\",")
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Apply combined cleanup regex
+    let cleaned_content =
+        CLEANUP_REGEX.replace_all(&cleaned_lines, |caps: &regex::Captures| {
+            if let Some(_m) = caps.get(1) {
+                format!("\\{}", &caps[2])
+            } else {
+                "\\\\".to_string()
+            }
+        });
+
+    if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_content) {
+        return Some(calls);
+    }
+
+    None
+}
+
 /// Generates tool system message for embedding in messages.
 fn tools_system_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
     // This removes the wrapper that only adds the "type: function"
     let functions = tools
-        .into_iter()
+        .iter()
         .map(|tool| {
             let OpenAiTool::Function(function) = tool;
             function
@@ -152,38 +187,16 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
             ChatMessage::Assistant { content } => {
                 let content_str = content.to_string();
 
-                // Helper to try parsing and cleaning JSON
-                let try_parse = |json_str: &str| -> Option<Vec<ToolCall>> {
-                    let cleaned_lines = json_str
-                        .lines()
-                        .filter(|line| line.trim() != "\"function\",")
-                        .collect::<Vec<_>>()
-                        .join("\n");
-
-                    // Apply combined cleanup regex
-                    let cleaned_content = CLEANUP_REGEX.replace_all(&cleaned_lines, |caps: &regex::Captures| {
-                        if let Some(_m) = caps.get(1) {
-                            format!("\\{}", &caps[2])
-                        } else {
-                            "\\\\".to_string()
-                        }
-                    });
-
-                    if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_content) {
-                        return Some(calls);
-                    }
-
-                    None
-                };
-
                 let mut final_tool_calls = None;
 
                 // Look for ```json ... ]\n```
-                let primary_regex = Regex::new(r"(?s)```json\s*(.*?)\]\n```").unwrap();
-                if let Some(captures) = primary_regex.captures(&content_str) {
+                // The extra "]" ensures we don't match on backtick blocks that are not tool calls.
+                if let Some(captures) = JSON_TOOL_REGEX.captures(&content_str) {
                     if let Some(match_) = captures.get(1) {
+                        // We need to re-introduce the square bracket
+                        // since the regex excludes it
                         let raw_json = format!("{}]", match_.as_str().trim());
-                        if let Some(calls) = try_parse(&raw_json) {
+                        if let Some(calls) = try_parse_json_tool_calls(&raw_json) {
                             final_tool_calls = Some(calls);
                         }
                     }
@@ -210,6 +223,13 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                     "No tool call identified in assistant message. Content: {}",
                     content
                 );
+
+                // Check for XML or ChatML tool calls and panic if found
+                if XML_TOOL_REGEX.is_match(&content_str) || CHATML_TOOL_REGEX.is_match(&content_str)
+                {
+                    unimplemented!("XML and ChatML tool calls are not supported yet");
+                }
+
                 Ok(OpenAiChatMessage::Assistant {
                     content: Some(content),
                     tool_calls: None,
@@ -423,5 +443,24 @@ mod tests {
         assert_eq!(straico_request.max_tokens, Some(100));
         assert_eq!(straico_request.messages.len(), 1);
     }
-}
 
+    #[test]
+    #[should_panic(expected = "XML and ChatML tool calls are not supported yet")]
+    fn test_openai_to_chat_message_assistant_with_xml_tools() {
+        let content_str = "<tool_calls>some tool call</tool_calls>";
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str.to_string()),
+        };
+        let _: OpenAiChatMessage = chat_msg.try_into().unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "XML and ChatML tool calls are not supported yet")]
+    fn test_openai_to_chat_message_assistant_with_chatml_tools() {
+        let content_str = "<|im_start|>tool\nsome tool call\n<|im_end|>";
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str.to_string()),
+        };
+        let _: OpenAiChatMessage = chat_msg.try_into().unwrap();
+    }
+}
