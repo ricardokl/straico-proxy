@@ -12,6 +12,34 @@ pub struct ChatRequestBuilder {
     max_tokens: Option<u32>,
 }
 
+pub trait IntoOption<T> {
+    fn into_option(self) -> Option<T>;
+}
+
+impl IntoOption<u32> for u32 {
+    fn into_option(self) -> Option<u32> {
+        Some(self)
+    }
+}
+
+impl IntoOption<u32> for Option<u32> {
+    fn into_option(self) -> Option<u32> {
+        self
+    }
+}
+
+impl IntoOption<f32> for f32 {
+    fn into_option(self) -> Option<f32> {
+        Some(self)
+    }
+}
+
+impl IntoOption<f32> for Option<f32> {
+    fn into_option(self) -> Option<f32> {
+        self
+    }
+}
+
 impl ChatRequestBuilder {
     /// Sets the model for the chat request.
     ///
@@ -44,7 +72,7 @@ impl ChatRequestBuilder {
     ///
     /// # Returns
     /// Self for method chaining
-    pub fn messages(mut self, messages: Vec<ChatMessage>) -> Self {
+    pub fn messages(mut self, messages: &[ChatMessage]) -> Self {
         self.messages.extend(messages);
         self
     }
@@ -56,8 +84,8 @@ impl ChatRequestBuilder {
     ///
     /// # Returns
     /// Self for method chaining
-    pub fn temperature(mut self, temperature: f32) -> Self {
-        self.temperature = Some(temperature);
+    pub fn temperature<T: Into<Option<f32>>>(mut self, temperature: T) -> Self {
+        self.temperature = temperature.into();
         self
     }
 
@@ -68,8 +96,8 @@ impl ChatRequestBuilder {
     ///
     /// # Returns
     /// Self for method chaining
-    pub fn max_tokens(mut self, max_tokens: u32) -> Self {
-        self.max_tokens = Some(max_tokens);
+    pub fn max_tokens<T: Into<Option<u32>>>(mut self, max_tokens: T) -> Self {
+        self.max_tokens = max_tokens.into();
         self
     }
 
@@ -87,5 +115,46 @@ impl ChatRequestBuilder {
             temperature: self.temperature,
             max_tokens: self.max_tokens,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_max_tokens_with_value() {
+        let builder = ChatRequestBuilder::default().max_tokens(100);
+        assert_eq!(builder.max_tokens, Some(100));
+    }
+
+    #[test]
+    fn test_max_tokens_with_option() {
+        let builder = ChatRequestBuilder::default().max_tokens(Some(100));
+        assert_eq!(builder.max_tokens, Some(100));
+    }
+
+    #[test]
+    fn test_max_tokens_with_none() {
+        let builder = ChatRequestBuilder::default().max_tokens(None);
+        assert_eq!(builder.max_tokens, None);
+    }
+
+    #[test]
+    fn test_temperature_with_value() {
+        let builder = ChatRequestBuilder::default().temperature(0.7);
+        assert_eq!(builder.temperature, Some(0.7));
+    }
+
+    #[test]
+    fn test_temperature_with_option() {
+        let builder = ChatRequestBuilder::default().temperature(Some(0.7));
+        assert_eq!(builder.temperature, Some(0.7));
+    }
+
+    #[test]
+    fn test_temperature_with_none() {
+        let builder = ChatRequestBuilder::default().temperature(None);
+        assert_eq!(builder.temperature, None);
     }
 }
