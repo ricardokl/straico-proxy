@@ -7,17 +7,8 @@ use log::debug;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static EXCESS_SLASH_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"\\{2,}([{}"\[\]\n])"#).unwrap());
-
-/// Cleans over-escaped strings in tool call arguments
-fn clean_tool_call_arguments(arguments: &str) -> String {
-    // Fix regex literal over-escaping
-    let cleaned = REGEX_LITERAL_SLASH_REGEX.replace_all(arguments, r#"\\"#);
-    cleaned.to_string()
-}
-
-static REGEX_LITERAL_SLASH_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\\\\{3,}"#).unwrap());
+static CLEANUP_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"(\\{2,}([{}"\[\]\n]))|(\\\\{3,})"#).unwrap());
 
 /// Generates tool system message for embedding in messages.
 fn tools_system_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
@@ -122,7 +113,7 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
             .model(&request.chat_request.model)
             .max_tokens(request.chat_request.max_tokens)
             .temperature(request.chat_request.temperature)
-            .messages(&messages)
+            .messages(messages)
             .build())
     }
 }
@@ -169,18 +160,16 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                         .collect::<Vec<_>>()
                         .join("\n");
 
-                    if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_lines) {
-                        return Some(calls);
-                    }
-
-                    // Try fixing excess escaping
-                    let cleaned_escapes = EXCESS_SLASH_REGEX.replace_all(&cleaned_lines, r#"\$1"#);
-                    if let Ok(mut calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_escapes) {
-                        // Clean arguments
-                        for tc in &mut calls {
-                            tc.function.arguments =
-                                clean_tool_call_arguments(&tc.function.arguments);
+                    // Apply combined cleanup regex
+                    let cleaned_content = CLEANUP_REGEX.replace_all(&cleaned_lines, |caps: &regex::Captures| {
+                        if let Some(_m) = caps.get(1) {
+                            format!("\\{}", &caps[2])
+                        } else {
+                            "\\\\".to_string()
                         }
+                    });
+
+                    if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_content) {
                         return Some(calls);
                     }
 
@@ -435,3 +424,4 @@ mod tests {
         assert_eq!(straico_request.messages.len(), 1);
     }
 }
+

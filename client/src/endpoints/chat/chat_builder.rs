@@ -72,7 +72,10 @@ impl ChatRequestBuilder {
     ///
     /// # Returns
     /// Self for method chaining
-    pub fn messages(mut self, messages: &[ChatMessage]) -> Self {
+    pub fn messages<I>(mut self, messages: I) -> Self
+    where
+        I: IntoIterator<Item = ChatMessage>,
+    {
         self.messages.extend(messages);
         self
     }
@@ -121,6 +124,7 @@ impl ChatRequestBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ChatContent;
 
     #[test]
     fn test_max_tokens_with_value() {
@@ -156,5 +160,21 @@ mod tests {
     fn test_temperature_with_none() {
         let builder = ChatRequestBuilder::default().temperature(None);
         assert_eq!(builder.temperature, None);
+    }
+
+    #[test]
+    fn test_messages_consumes_iterator() {
+        let msg = ChatMessage::User {
+            content: ChatContent::String("Hello".to_string()),
+        };
+        let messages = vec![msg.clone()];
+        
+        // This should compile and run, consuming the vector
+        let builder = ChatRequestBuilder::default().messages(messages);
+        
+        assert_eq!(builder.messages.len(), 1);
+        // We can't easily check if it was cloned or moved without a non-Clone type, 
+        // but ChatMessage is Clone. The fact that it accepts Vec<ChatMessage> 
+        // (which is IntoIterator<Item=ChatMessage>) confirms the signature change.
     }
 }
