@@ -20,8 +20,17 @@ fn clean_tool_call_arguments(arguments: &str) -> String {
 static REGEX_LITERAL_SLASH_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\\\\{3,}"#).unwrap());
 
 /// Generates tool system message for embedding in messages.
-fn generate_tool_system_message(tools: &[OpenAiTool]) -> Result<String, ChatError> {
-    Ok(format!(
+fn tools_system_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
+    // This removes the wrapper that only adds the "type: function"
+    let functions = tools
+        .into_iter()
+        .map(|tool| {
+            let OpenAiTool::Function(function) = tool;
+            function
+        })
+        .collect::<Vec<_>>();
+
+    let system_message = format!(
         r###"
 # Tools
 
@@ -85,49 +94,36 @@ Example of multiple tool calls:
 ]
 ```
 "###,
-        serde_json::to_string_pretty(tools)?,
-    ))
+        serde_json::to_string_pretty(&functions)?,
+    );
+
+    Ok(ChatMessage::system(system_message))
 }
 
 impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
     type Error = ChatError;
 
     fn try_from(request: OpenAiChatRequest) -> Result<Self, Self::Error> {
-        let messages: Vec<ChatMessage> = request
+        let mut messages: Vec<ChatMessage> = request
             .chat_request
             .messages
             .into_iter()
             .map(ChatMessage::try_from)
             .collect::<Result<_, _>>()?;
 
-        let mut builder = ChatRequest::builder().model(&request.chat_request.model);
-
-        if let Some(tokens) = request.chat_request.max_tokens {
-            builder = builder.max_tokens(tokens);
-        }
-
-        if let Some(temp) = request.chat_request.temperature {
-            builder = builder.temperature(temp);
-        }
-
-        if let Some(tools) = request.tools {
-            if !tools.is_empty() {
-                let mut new_messages = messages;
-                for tool in &tools {
-                    let OpenAiTool::Function(_) = tool;
-                }
-
-                let tool_system_message = generate_tool_system_message(&tools)?;
-                let system_message = ChatMessage::system(tool_system_message);
-                new_messages.insert(0, system_message);
-
-                builder = builder.messages(new_messages);
-                return Ok(builder.build());
+        match request.tools {
+            Some(tools) if !tools.is_empty() => {
+                messages.insert(0, tools_system_message(&tools)?);
             }
+            _ => {}
         }
 
-        builder = builder.messages(messages);
-        Ok(builder.build())
+        Ok(ChatRequest::builder()
+            .model(&request.chat_request.model)
+            .max_tokens(request.chat_request.max_tokens)
+            .temperature(request.chat_request.temperature)
+            .messages(&messages)
+            .build())
     }
 }
 
@@ -221,6 +217,10 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                 }
 
                 // If no tool calls are found, return content as is.
+                debug!(
+                    "No tool call identified in assistant message. Content: {}",
+                    content
+                );
                 Ok(OpenAiChatMessage::Assistant {
                     content: Some(content),
                     tool_calls: None,
@@ -239,28 +239,12 @@ impl TryFrom<StraicoChatResponse> for OpenAiChatResponse {
             .choices
             .into_iter()
             .map(|choice| {
-                let original_content = match &choice.message {
-                    ChatMessage::Assistant { content } => content.to_string(),
-                    ChatMessage::System { content } => content.to_string(),
-                    ChatMessage::User { content } => content.to_string(),
-                };
                 let open_ai_message: OpenAiChatMessage = choice.message.try_into()?;
                 let finish_reason = match &open_ai_message {
-                    OpenAiChatMessage::Assistant {
-                        tool_calls,
-                        content,
-                    } => {
+                    OpenAiChatMessage::Assistant { tool_calls, .. } => {
                         if tool_calls.is_some() {
                             "tool_calls".to_string()
                         } else {
-                            // Log when no tool call was identified from assistant message
-                            debug!(
-                                "No tool call identified in assistant message. Content: {}",
-                                content
-                                    .as_ref()
-                                    .map(|c| c.to_string())
-                                    .unwrap_or_else(|| original_content)
-                            );
                             choice.finish_reason
                         }
                     }
