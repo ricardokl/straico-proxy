@@ -11,7 +11,7 @@ static CLEANUP_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(\\{2,}([{}"\[\]\n]))|(\\\\{3,})"#).unwrap());
 
 static JSON_TOOL_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)\]\n```").unwrap());
+    Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)\]\s*```").unwrap());
 
 static XML_TOOL_CALL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<tool_call>(.*?)</tool_call>").unwrap());
@@ -38,9 +38,14 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
                 .collect::<Vec<_>>()
                 .join("\n");
 
+            // Fix missing opening quote for arguments that start with {\
+            // This happens when the LLM outputs "arguments": {\"key\": ...} instead of "arguments": "{\"key\": ...}"
+            let fixed_quotes_regex = Regex::new(r#""arguments":\s*(\{\\)"#).unwrap();
+            let fixed_quotes = fixed_quotes_regex.replace_all(&cleaned_lines, "\"arguments\": \"$1");
+
             // Apply combined cleanup regex
             let cleaned_content =
-                CLEANUP_REGEX.replace_all(&cleaned_lines, |caps: &regex::Captures| {
+                CLEANUP_REGEX.replace_all(&fixed_quotes, |caps: &regex::Captures| {
                     if let Some(_m) = caps.get(1) {
                         format!("\\{}", &caps[2])
                     } else {
@@ -609,4 +614,6 @@ mod tests {
             _ => panic!("Incorrect message type"),
         }
     }
+
 }
+
