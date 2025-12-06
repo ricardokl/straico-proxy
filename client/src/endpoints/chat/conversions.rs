@@ -10,13 +10,6 @@ use regex::Regex;
 static CLEANUP_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"(\\{2,}([{}"\[\]\n]))|(\\\\{3,})"#).unwrap());
 
-static XML_TOOL_REGEX: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"(?s)<tool_code>.*?</tool_code>|(?s)<tool_calls>.*?</tool_calls>|(?s)<function_calls>.*?</function_calls>").unwrap()
-});
-
-static CHATML_TOOL_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?s)<\|im_start\|>tool.*?<\|im_end\|>").unwrap());
-
 static JSON_TOOL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)\]\n```").unwrap());
 
@@ -38,7 +31,7 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
             // We need to re-introduce the square bracket
             // since the regex excludes it
             let raw_json = format!("{}]", match_.as_str().trim());
-            
+
             let cleaned_lines = raw_json
                 .lines()
                 .filter(|line| line.trim() != "\"function\",")
@@ -46,13 +39,14 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
                 .join("\n");
 
             // Apply combined cleanup regex
-            let cleaned_content = CLEANUP_REGEX.replace_all(&cleaned_lines, |caps: &regex::Captures| {
-                if let Some(_m) = caps.get(1) {
-                    format!("\\{}", &caps[2])
-                } else {
-                    "\\\\".to_string()
-                }
-            });
+            let cleaned_content =
+                CLEANUP_REGEX.replace_all(&cleaned_lines, |caps: &regex::Captures| {
+                    if let Some(_m) = caps.get(1) {
+                        format!("\\{}", &caps[2])
+                    } else {
+                        "\\\\".to_string()
+                    }
+                });
 
             if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_content) {
                 return Some(calls);
@@ -306,15 +300,9 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
             ChatMessage::Assistant { content } => {
                 let content_str = content.to_string();
 
-                let mut final_tool_calls = try_parse_json_tool_call(&content_str);
-
-                if final_tool_calls.is_none() {
-                    final_tool_calls = try_parse_xml_tool_call(&content_str);
-                }
-
-                if final_tool_calls.is_none() {
-                    final_tool_calls = try_parse_pipe_tool_call(&content_str);
-                }
+                let final_tool_calls = try_parse_json_tool_call(&content_str)
+                    .or_else(|| try_parse_xml_tool_call(&content_str))
+                    .or_else(|| try_parse_pipe_tool_call(&content_str));
 
                 if let Some(mut tool_calls) = final_tool_calls {
                     if !tool_calls.is_empty() {
