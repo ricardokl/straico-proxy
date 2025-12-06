@@ -20,29 +20,148 @@ static CHATML_TOOL_REGEX: Lazy<Regex> =
 static JSON_TOOL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)\]\n```").unwrap());
 
+static XML_TOOL_CALL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)<tool_call>(.*?)</tool_call>").unwrap());
+
+static XML_ARG_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)<arg_key>(.*?)</arg_value>").unwrap());
+
+static PIPE_TOOL_CALL_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)<\|tool_call_begin\|>(.*?)<\|tool_call_end\|>").unwrap());
+
 /// Helper to try parsing and cleaning JSON
-fn try_parse_json_tool_calls(json_str: &str) -> Option<Vec<ToolCall>> {
-    let cleaned_lines = json_str
-        .lines()
-        .filter(|line| line.trim() != "\"function\",")
-        .collect::<Vec<_>>()
-        .join("\n");
+fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
+    // Look for ```json ... ]\n```
+    // The extra "]" ensures we don't match on backtick blocks that are not tool calls.
+    if let Some(captures) = JSON_TOOL_REGEX.captures(content) {
+        if let Some(match_) = captures.get(1) {
+            // We need to re-introduce the square bracket
+            // since the regex excludes it
+            let raw_json = format!("{}]", match_.as_str().trim());
+            
+            let cleaned_lines = raw_json
+                .lines()
+                .filter(|line| line.trim() != "\"function\",")
+                .collect::<Vec<_>>()
+                .join("\n");
 
-    // Apply combined cleanup regex
-    let cleaned_content =
-        CLEANUP_REGEX.replace_all(&cleaned_lines, |caps: &regex::Captures| {
-            if let Some(_m) = caps.get(1) {
-                format!("\\{}", &caps[2])
-            } else {
-                "\\\\".to_string()
+            // Apply combined cleanup regex
+            let cleaned_content = CLEANUP_REGEX.replace_all(&cleaned_lines, |caps: &regex::Captures| {
+                if let Some(_m) = caps.get(1) {
+                    format!("\\{}", &caps[2])
+                } else {
+                    "\\\\".to_string()
+                }
+            });
+
+            if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_content) {
+                return Some(calls);
             }
-        });
-
-    if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_content) {
-        return Some(calls);
+        }
     }
 
     None
+}
+
+/// Helper to try parsing XML tool calls
+fn try_parse_xml_tool_call(content: &str) -> Option<Vec<ToolCall>> {
+    let mut tool_calls = Vec::new();
+
+    for (i, cap) in XML_TOOL_CALL_REGEX.captures_iter(content).enumerate() {
+        let inner = cap.get(1)?.as_str().trim();
+
+        // Extract function name (first line/word)
+        let mut lines = inner.lines();
+        let function_name = lines.next()?.trim().to_string();
+
+        if function_name.is_empty() {
+            continue;
+        }
+
+        // Build JSON arguments
+        let mut args_json_str = String::from("{");
+        let mut first = true;
+
+        for arg_cap in XML_ARG_REGEX.captures_iter(inner) {
+            if !first {
+                args_json_str.push(',');
+            }
+            let arg_content = arg_cap.get(1)?.as_str();
+            // Prepend quote to make it valid JSON key
+            args_json_str.push_str(&format!("\"{}", arg_content));
+            first = false;
+        }
+        args_json_str.push('}');
+
+        // Validate JSON
+        if serde_json::from_str::<serde_json::Value>(&args_json_str).is_ok() {
+            tool_calls.push(ToolCall {
+                id: format!("call_{}", i),
+                tool_type: "function".to_string(),
+                function: crate::endpoints::chat::ChatFunctionCall {
+                    name: function_name,
+                    arguments: args_json_str,
+                },
+                index: None,
+            });
+        }
+    }
+
+    if tool_calls.is_empty() {
+        None
+    } else {
+        Some(tool_calls)
+    }
+}
+
+/// Helper to try parsing pipe tool calls
+fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
+    if !content.contains("<|tool_calls_section_begin|>") {
+        return None;
+    }
+
+    let mut tool_calls = Vec::new();
+
+    for (i, cap) in PIPE_TOOL_CALL_REGEX.captures_iter(content).enumerate() {
+        let inner = cap.get(1)?.as_str();
+
+        // Split into function name and arguments
+        // Format: functions.view:0<|tool_call_argument_begin|>{"file_path": "..."}
+        let parts: Vec<&str> = inner.split("<|tool_call_argument_begin|>").collect();
+        if parts.len() != 2 {
+            continue;
+        }
+
+        let raw_function_name = parts[0].trim();
+        let args_json_str = parts[1].trim();
+
+        // Clean up function name: remove "functions." prefix and ":0" suffix
+        let function_name = raw_function_name
+            .trim_start_matches("functions.")
+            .split(':')
+            .next()
+            .unwrap_or(raw_function_name)
+            .to_string();
+
+        // Validate JSON
+        if serde_json::from_str::<serde_json::Value>(args_json_str).is_ok() {
+            tool_calls.push(ToolCall {
+                id: format!("call_{}", i),
+                tool_type: "function".to_string(),
+                function: crate::endpoints::chat::ChatFunctionCall {
+                    name: function_name,
+                    arguments: args_json_str.to_string(),
+                },
+                index: None,
+            });
+        }
+    }
+
+    if tool_calls.is_empty() {
+        None
+    } else {
+        Some(tool_calls)
+    }
 }
 
 /// Generates tool system message for embedding in messages.
@@ -80,7 +199,7 @@ Each object in the array represents a single tool call and must have the followi
 
 The "function" object must have the following properties:
 - "name": The name of the function to call.
-- "arguments": A JSON string of the arguments to pass to the function. Note that this must be a STRING containing a valid JSON object, not a nested JSON object.
+- "arguments": A JSON string of the arguments to pass to the function.
 
 Example of a single tool call:
 
@@ -91,7 +210,7 @@ Example of a single tool call:
     "type": "function",
     "function": {{
       "name": "get_weather",
-      "arguments": "{{\"location\": \"Boston, MA\"}}"
+      "arguments": "{{"location": "Boston, MA"}}"
     }}
   }}
 ]
@@ -106,7 +225,7 @@ Example of multiple tool calls:
     "type": "function",
     "function": {{
       "name": "search_web",
-      "arguments": "{{\"query\": \"latest AI news\"}}"
+      "arguments": "{{"query": "latest AI news"}}"
     }}
   }},
   {{
@@ -114,7 +233,7 @@ Example of multiple tool calls:
     "type": "function",
     "function": {{
       "name": "summarize_text",
-      "arguments": "{{\"text\": \"A long text to be summarized...\"}}"
+      "arguments": "{{"text": "A long text to be summarized..."}}"
     }}
   }}
 ]
@@ -187,19 +306,14 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
             ChatMessage::Assistant { content } => {
                 let content_str = content.to_string();
 
-                let mut final_tool_calls = None;
+                let mut final_tool_calls = try_parse_json_tool_call(&content_str);
 
-                // Look for ```json ... ]\n```
-                // The extra "]" ensures we don't match on backtick blocks that are not tool calls.
-                if let Some(captures) = JSON_TOOL_REGEX.captures(&content_str) {
-                    if let Some(match_) = captures.get(1) {
-                        // We need to re-introduce the square bracket
-                        // since the regex excludes it
-                        let raw_json = format!("{}]", match_.as_str().trim());
-                        if let Some(calls) = try_parse_json_tool_calls(&raw_json) {
-                            final_tool_calls = Some(calls);
-                        }
-                    }
+                if final_tool_calls.is_none() {
+                    final_tool_calls = try_parse_xml_tool_call(&content_str);
+                }
+
+                if final_tool_calls.is_none() {
+                    final_tool_calls = try_parse_pipe_tool_call(&content_str);
                 }
 
                 if let Some(mut tool_calls) = final_tool_calls {
@@ -223,12 +337,6 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
                     "No tool call identified in assistant message. Content: {}",
                     content
                 );
-
-                // Check for XML or ChatML tool calls and panic if found
-                if XML_TOOL_REGEX.is_match(&content_str) || CHATML_TOOL_REGEX.is_match(&content_str)
-                {
-                    unimplemented!("XML and ChatML tool calls are not supported yet");
-                }
 
                 Ok(OpenAiChatMessage::Assistant {
                     content: Some(content),
@@ -445,22 +553,72 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "XML and ChatML tool calls are not supported yet")]
     fn test_openai_to_chat_message_assistant_with_xml_tools() {
         let content_str = "<tool_calls>some tool call</tool_calls>";
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str.to_string()),
         };
-        let _: OpenAiChatMessage = chat_msg.try_into().unwrap();
+        // Should not panic anymore, just return content
+        let _ = OpenAiChatMessage::try_from(chat_msg).unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "XML and ChatML tool calls are not supported yet")]
     fn test_openai_to_chat_message_assistant_with_chatml_tools() {
         let content_str = "<|im_start|>tool\nsome tool call\n<|im_end|>";
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str.to_string()),
         };
-        let _: OpenAiChatMessage = chat_msg.try_into().unwrap();
+        // Should not panic anymore, just return content
+        let _ = OpenAiChatMessage::try_from(chat_msg).unwrap();
+    }
+
+    #[test]
+    fn test_openai_to_chat_message_assistant_with_custom_xml_tools() {
+        let content_str = r#"<tool_call>read
+<arg_key>filePath": "/tmp/test_file.txt"</arg_value>
+</tool_call>"#;
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str.to_string()),
+        };
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
+        match open_ai_msg {
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                assert!(content.is_none());
+                let tool_calls = tool_calls.unwrap();
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].function.name, "read");
+                let args: serde_json::Value =
+                    serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
+                assert_eq!(args["filePath"], "/tmp/test_file.txt");
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
+
+    #[test]
+    fn test_openai_to_chat_message_assistant_with_pipe_tools() {
+        let content_str = r#"<|tool_calls_section_begin|><|tool_call_begin|>functions.view:0<|tool_call_argument_begin|>{"file_path": "/tmp/random_file.txt"}<|tool_call_end|><|tool_calls_section_end|>"#;
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str.to_string()),
+        };
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
+        match open_ai_msg {
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                assert!(content.is_none());
+                let tool_calls = tool_calls.unwrap();
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].function.name, "view");
+                let args: serde_json::Value =
+                    serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
+                assert_eq!(args["file_path"], "/tmp/random_file.txt");
+            }
+            _ => panic!("Incorrect message type"),
+        }
     }
 }
