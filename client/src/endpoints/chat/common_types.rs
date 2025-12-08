@@ -4,17 +4,19 @@ use serde::{Deserialize, Deserializer, Serialize};
 ///
 /// # Fields
 /// * `name` - The name of the function called
-/// * `arguments` - The function arguments as a JSON string
+/// * `arguments` - The function arguments as a JSON object
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct ChatFunctionCall {
     /// The name of the function being called
     pub name: String,
-    /// The arguments to pass to the function, as a JSON string
-    #[serde(deserialize_with = "string_or_object_deserializer")]
-    pub arguments: String,
+    /// The arguments to pass to the function, as a JSON object
+    #[serde(deserialize_with = "string_or_object_to_value_deserializer")]
+    pub arguments: serde_json::Value,
 }
 
-pub fn string_or_object_deserializer<'de, D>(deserializer: D) -> Result<String, D::Error>
+pub fn string_or_object_to_value_deserializer<'de, D>(
+    deserializer: D,
+) -> Result<serde_json::Value, D::Error>
 where
     D: Deserializer<'de>,
 {
@@ -26,8 +28,8 @@ where
     }
 
     match StringOrObject::deserialize(deserializer)? {
-        StringOrObject::String(s) => Ok(s),
-        StringOrObject::Object(v) => Ok(v.to_string()),
+        StringOrObject::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
+        StringOrObject::Object(v) => Ok(v),
     }
 }
 

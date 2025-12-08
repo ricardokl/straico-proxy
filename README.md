@@ -12,6 +12,19 @@ Router functionality is included as an extra feature for multi-provider support.
 - **Multi-provider routing** (extra feature) for SambaNova, Cerebras, Groq
 - Simple configuration through environment variables
 
+## Straico API
+
+The proxy can convert between OpenAI format and Straico's API format. Straico's chat endpoint:
+
+- https://api.straico.com/v2/chat/completions
+
+### Available Parameters
+
+- model: String
+- temperature: number
+- max_tokens: number
+- messages: Object with role and content fields
+
 ## Installation
 
 ### Pre-compiled Binary (Recommended)
@@ -123,22 +136,6 @@ curl -X POST http://localhost:8000/v1/chat/completions \
     ]
   }'
 ```
-
-## Straico API
-
-The proxy can convert between OpenAI format and Straico's API format. Straico's chat endpoint:
-
-- https://api.straico.com/v2/chat/completions
-
-### Available Parameters
-
-- model: String
-- temperature: number
-- max_tokens: number
-- messages: Object with role and content fields
-
-
-
 ## License
 
 MIT

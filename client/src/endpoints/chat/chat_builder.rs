@@ -168,13 +168,13 @@ mod tests {
             content: ChatContent::String("Hello".to_string()),
         };
         let messages = vec![msg.clone()];
-        
+
         // This should compile and run, consuming the vector
         let builder = ChatRequestBuilder::default().messages(messages);
-        
+
         assert_eq!(builder.messages.len(), 1);
-        // We can't easily check if it was cloned or moved without a non-Clone type, 
-        // but ChatMessage is Clone. The fact that it accepts Vec<ChatMessage> 
+        // We can't easily check if it was cloned or moved without a non-Clone type,
+        // but ChatMessage is Clone. The fact that it accepts Vec<ChatMessage>
         // (which is IntoIterator<Item=ChatMessage>) confirms the signature change.
     }
 }

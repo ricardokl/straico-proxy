@@ -7,9 +7,6 @@ use log::debug;
 use once_cell::sync::Lazy;
 use regex::Regex;
 
-static CLEANUP_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r#"(\\{2,}([{}"\[\]\n]))|(\\\\{3,})"#).unwrap());
-
 static JSON_TOOL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)\]\s*```").unwrap());
 
@@ -22,7 +19,7 @@ static XML_ARG_REGEX: Lazy<Regex> =
 static PIPE_TOOL_CALL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<\|tool_call_begin\|>(.*?)<\|tool_call_end\|>").unwrap());
 
-/// Helper to try parsing and cleaning JSON
+/// Helper to try parsing JSON tool calls
 fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     // Look for ```json ... ]\n```
     // The extra "]" ensures we don't match on backtick blocks that are not tool calls.
@@ -32,28 +29,14 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
             // since the regex excludes it
             let raw_json = format!("{}]", match_.as_str().trim());
 
+            // Remove extra "function," lines that some models add
             let cleaned_lines = raw_json
                 .lines()
                 .filter(|line| line.trim() != "\"function\",")
                 .collect::<Vec<_>>()
                 .join("\n");
 
-            // Fix missing opening quote for arguments that start with {\
-            // This happens when the LLM outputs "arguments": {\"key\": ...} instead of "arguments": "{\"key\": ...}"
-            let fixed_quotes_regex = Regex::new(r#""arguments":\s*(\{\\)"#).unwrap();
-            let fixed_quotes = fixed_quotes_regex.replace_all(&cleaned_lines, "\"arguments\": \"$1");
-
-            // Apply combined cleanup regex
-            let cleaned_content =
-                CLEANUP_REGEX.replace_all(&fixed_quotes, |caps: &regex::Captures| {
-                    if let Some(_m) = caps.get(1) {
-                        format!("\\{}", &caps[2])
-                    } else {
-                        "\\\\".to_string()
-                    }
-                });
-
-            if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_content) {
+            if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_lines) {
                 return Some(calls);
             }
         }
@@ -92,14 +75,14 @@ fn try_parse_xml_tool_call(content: &str) -> Option<Vec<ToolCall>> {
         }
         args_json_str.push('}');
 
-        // Validate JSON
-        if serde_json::from_str::<serde_json::Value>(&args_json_str).is_ok() {
+        // Validate and parse JSON
+        if let Ok(args_value) = serde_json::from_str::<serde_json::Value>(&args_json_str) {
             tool_calls.push(ToolCall {
                 id: format!("call_{}", i),
                 tool_type: "function".to_string(),
                 function: crate::endpoints::chat::ChatFunctionCall {
                     name: function_name,
-                    arguments: args_json_str,
+                    arguments: args_value,
                 },
                 index: None,
             });
@@ -142,14 +125,14 @@ fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
             .unwrap_or(raw_function_name)
             .to_string();
 
-        // Validate JSON
-        if serde_json::from_str::<serde_json::Value>(args_json_str).is_ok() {
+        // Validate and parse JSON
+        if let Ok(args_value) = serde_json::from_str::<serde_json::Value>(args_json_str) {
             tool_calls.push(ToolCall {
                 id: format!("call_{}", i),
                 tool_type: "function".to_string(),
                 function: crate::endpoints::chat::ChatFunctionCall {
                     name: function_name,
-                    arguments: args_json_str.to_string(),
+                    arguments: args_value,
                 },
                 index: None,
             });
@@ -393,7 +376,7 @@ mod tests {
             tool_type: "function".to_string(),
             function: ChatFunctionCall {
                 name: "test_func".to_string(),
-                arguments: "{{}}".to_string(),
+                arguments: serde_json::json!({}),
             },
             index: None,
         }];
@@ -429,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_tools() {
-        let tool_calls_json = r#"[{"id":"tool_call_0","type":"function","function":{"name":"view","arguments": " { \"file_path\":\"client/Cargo.toml\" }"}}]"#;
+        let tool_calls_json = r#"[{"id":"tool_call_0","type":"function","function":{"name":"view","arguments": { "file_path":"client/Cargo.toml" }}}]"#;
         let content_str = format!("```json\n{}\n```", tool_calls_json);
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str),
@@ -448,7 +431,7 @@ mod tests {
                 assert_eq!(tool_calls[0].function.name, "view");
                 assert_eq!(
                     tool_calls[0].function.arguments,
-                    " { \"file_path\":\"client/Cargo.toml\" }"
+                    serde_json::json!({ "file_path": "client/Cargo.toml" })
                 );
             }
             _ => panic!("Incorrect message type"),
@@ -516,7 +499,8 @@ mod tests {
                 assert_eq!(tool_calls[0].id, "tool_call_0");
                 assert_eq!(tool_calls[0].function.name, "write");
                 // Verify the argument contains the nested backticks
-                assert!(tool_calls[0].function.arguments.contains("```bash"));
+                let args_str = tool_calls[0].function.arguments.to_string();
+                assert!(args_str.contains("```bash"));
             }
             _ => panic!("Incorrect message type"),
         }
@@ -583,9 +567,10 @@ mod tests {
                 let tool_calls = tool_calls.unwrap();
                 assert_eq!(tool_calls.len(), 1);
                 assert_eq!(tool_calls[0].function.name, "read");
-                let args: serde_json::Value =
-                    serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
-                assert_eq!(args["filePath"], "/tmp/test_file.txt");
+                assert_eq!(
+                    tool_calls[0].function.arguments["filePath"],
+                    "/tmp/test_file.txt"
+                );
             }
             _ => panic!("Incorrect message type"),
         }
@@ -607,13 +592,12 @@ mod tests {
                 let tool_calls = tool_calls.unwrap();
                 assert_eq!(tool_calls.len(), 1);
                 assert_eq!(tool_calls[0].function.name, "view");
-                let args: serde_json::Value =
-                    serde_json::from_str(&tool_calls[0].function.arguments).unwrap();
-                assert_eq!(args["file_path"], "/tmp/random_file.txt");
+                assert_eq!(
+                    tool_calls[0].function.arguments["file_path"],
+                    "/tmp/random_file.txt"
+                );
             }
             _ => panic!("Incorrect message type"),
         }
     }
-
 }
-
