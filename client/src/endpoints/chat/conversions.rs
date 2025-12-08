@@ -42,6 +42,20 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
         }
     }
 
+    // Fallback: try parsing raw JSON array without code block wrapper
+    let trimmed = content.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        let cleaned_lines = trimmed
+            .lines()
+            .filter(|line| line.trim() != "\"function\",")
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_lines) {
+            return Some(calls);
+        }
+    }
+
     None
 }
 
