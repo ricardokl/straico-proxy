@@ -30,53 +30,29 @@ fn function_call_to_tool_call(function: ChatFunctionCall) -> ToolCall {
     }
 }
 
-/// Helper to try parsing JSON tool calls
+/// Try parsing JSON tool calls from a ```json code block
 fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     // Look for ```json ... ]\n```
     // The extra "]" ensures we don't match on backtick blocks that are not tool calls.
-    if let Some(captures) = JSON_TOOL_REGEX.captures(content) {
-        if let Some(match_) = captures.get(1) {
-            // We need to re-introduce the square bracket
-            // since the regex excludes it
-            let raw_json = format!("{}]", match_.as_str().trim());
+    let raw_json = JSON_TOOL_REGEX
+        .captures(content)
+        .and_then(|c| c.get(1))
+        // We need to re-introduce the square bracket since the regex excludes it
+        .map(|m| format!("{}]", m.as_str().trim()))
+        // Try parsing JSON tool calls from a raw JSON array without code block wrapper
+        .or_else(|| {
+            let trimmed = content.trim();
+            (trimmed.starts_with('[') && trimmed.ends_with(']')).then_some(trimmed.to_string())
+        })?;
 
-            // Try parsing as simplified format (just function calls)
-            if let Ok(functions) = serde_json::from_str::<Vec<ChatFunctionCall>>(&raw_json) {
-                return Some(
-                    functions
-                        .into_iter()
-                        .map(function_call_to_tool_call)
-                        .collect(),
-                );
-            }
-
-            // Fallback: try parsing as full ToolCall format (for backwards compatibility)
-            if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&raw_json) {
-                return Some(calls);
-            }
-        }
-    }
-
-    // Fallback: try parsing raw JSON array without code block wrapper
-    let trimmed = content.trim();
-    if trimmed.starts_with('[') && trimmed.ends_with(']') {
-        // Try parsing as simplified format first
-        if let Ok(functions) = serde_json::from_str::<Vec<ChatFunctionCall>>(trimmed) {
-            return Some(
-                functions
-                    .into_iter()
-                    .map(function_call_to_tool_call)
-                    .collect(),
-            );
-        }
-
-        // Fallback: try parsing as full ToolCall format
-        if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(trimmed) {
-            return Some(calls);
-        }
-    }
-
-    None
+    serde_json::from_str::<Vec<ChatFunctionCall>>(&raw_json)
+        .ok()
+        .map(|functions| {
+            functions
+                .into_iter()
+                .map(function_call_to_tool_call)
+                .collect()
+        })
 }
 
 /// Helper to try parsing XML tool calls
@@ -419,7 +395,8 @@ mod tests {
     #[test]
     fn test_chat_to_openai_message_assistant_with_tools() {
         // Test the simplified format (just name and arguments)
-        let tool_calls_json = r#"[{"name":"view","arguments": { "file_path":"client/Cargo.toml" }}]"#;
+        let tool_calls_json =
+            r#"[{"name":"view","arguments": { "file_path":"client/Cargo.toml" }}]"#;
         let content_str = format!("```json\n{}\n```", tool_calls_json);
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str),
