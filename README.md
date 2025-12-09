@@ -1,5 +1,10 @@
 # Straico Proxy
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
+[![Release](https://img.shields.io/github/v/release/ricardo-jorge/straico-proxy)](https://github.com/ricardo-jorge/straico-proxy/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/ricardo-jorge/straico-proxy/release.yml)](https://github.com/ricardo-jorge/straico-proxy/actions)
+
 A proxy server that enables tool calling and streaming for Straico API, with format conversions to bridge compatibility gaps. "Mileage may vary" as conversions between different API formats are involved.
 
 Router functionality is included as an extra feature for multi-provider support.
@@ -7,7 +12,7 @@ Router functionality is included as an extra feature for multi-provider support.
 ## Features
 
 - **Tool calling support** for Straico API
-- **Streaming capabilities** for real-time responses
+- **Streaming simulation** with heartbeat chunks until response arrives
 - **Format conversions** between OpenAI and Straico API formats
 - **Multi-provider routing** (extra feature) for SambaNova, Cerebras, Groq
 - Simple configuration through environment variables
@@ -126,6 +131,8 @@ Each provider requires its own API key set via environment variables:
 
 ## Example Request
 
+### Basic Chat
+
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -134,6 +141,52 @@ curl -X POST http://localhost:8000/v1/chat/completions \
     "messages": [
       {"role": "user", "content": "Hello!"}
     ]
+  }'
+```
+
+### Tool Calling
+
+```bash
+curl -X POST http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "straico/llama-3.3-70b-versatile",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a weather assistant. Use the get_weather function to retrieve weather information for a given location."
+      },
+      {
+        "role": "user",
+        "content": "What\'s the weather like in New York today?"
+      }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get the current weather for a location",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "location": {
+                "type": "string",
+                "description": "The city and state, e.g. San Francisco, CA"
+              },
+              "unit": {
+                "type": "string",
+                "enum": ["celsius", "fahrenheit"],
+                "description": "The unit of temperature to use. Defaults to fahrenheit."
+              }
+            },
+            "required": ["location"]
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto",
+    "max_completion_tokens": 4096
   }'
 ```
 ## License

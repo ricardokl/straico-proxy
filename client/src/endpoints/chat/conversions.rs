@@ -1,11 +1,12 @@
 use super::{
-    ChatContent, ChatError, ChatMessage, OpenAiChatMessage, ToolCall,
+    ChatContent, ChatError, ChatFunctionCall, ChatMessage, OpenAiChatMessage, ToolCall,
     request_types::{ChatRequest, OpenAiChatRequest, OpenAiTool, StraicoChatRequest},
     response_types::{ChatChoice, OpenAiChatResponse, StraicoChatResponse},
 };
 use log::debug;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use uuid::Uuid;
 
 static JSON_TOOL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)```json\s*(.*?)\]\s*```").unwrap());
@@ -19,6 +20,16 @@ static XML_ARG_REGEX: Lazy<Regex> =
 static PIPE_TOOL_CALL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<\|tool_call_begin\|>(.*?)<\|tool_call_end\|>").unwrap());
 
+/// Converts a ChatFunctionCall into a full ToolCall with generated ID
+fn function_call_to_tool_call(function: ChatFunctionCall) -> ToolCall {
+    ToolCall {
+        id: format!("call_{}", Uuid::new_v4()),
+        tool_type: "function".to_string(),
+        function,
+        index: None,
+    }
+}
+
 /// Helper to try parsing JSON tool calls
 fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     // Look for ```json ... ]\n```
@@ -29,14 +40,18 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
             // since the regex excludes it
             let raw_json = format!("{}]", match_.as_str().trim());
 
-            // Remove extra "function," lines that some models add
-            let cleaned_lines = raw_json
-                .lines()
-                .filter(|line| line.trim() != "\"function\",")
-                .collect::<Vec<_>>()
-                .join("\n");
+            // Try parsing as simplified format (just function calls)
+            if let Ok(functions) = serde_json::from_str::<Vec<ChatFunctionCall>>(&raw_json) {
+                return Some(
+                    functions
+                        .into_iter()
+                        .map(function_call_to_tool_call)
+                        .collect(),
+                );
+            }
 
-            if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_lines) {
+            // Fallback: try parsing as full ToolCall format (for backwards compatibility)
+            if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&raw_json) {
                 return Some(calls);
             }
         }
@@ -45,13 +60,18 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     // Fallback: try parsing raw JSON array without code block wrapper
     let trimmed = content.trim();
     if trimmed.starts_with('[') && trimmed.ends_with(']') {
-        let cleaned_lines = trimmed
-            .lines()
-            .filter(|line| line.trim() != "\"function\",")
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Try parsing as simplified format first
+        if let Ok(functions) = serde_json::from_str::<Vec<ChatFunctionCall>>(trimmed) {
+            return Some(
+                functions
+                    .into_iter()
+                    .map(function_call_to_tool_call)
+                    .collect(),
+            );
+        }
 
-        if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(&cleaned_lines) {
+        // Fallback: try parsing as full ToolCall format
+        if let Ok(calls) = serde_json::from_str::<Vec<ToolCall>>(trimmed) {
             return Some(calls);
         }
     }
@@ -63,7 +83,7 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
 fn try_parse_xml_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     let mut tool_calls = Vec::new();
 
-    for (i, cap) in XML_TOOL_CALL_REGEX.captures_iter(content).enumerate() {
+    for cap in XML_TOOL_CALL_REGEX.captures_iter(content) {
         let inner = cap.get(1)?.as_str().trim();
 
         // Extract function name (first line/word)
@@ -91,15 +111,10 @@ fn try_parse_xml_tool_call(content: &str) -> Option<Vec<ToolCall>> {
 
         // Validate and parse JSON
         if let Ok(args_value) = serde_json::from_str::<serde_json::Value>(&args_json_str) {
-            tool_calls.push(ToolCall {
-                id: format!("call_{}", i),
-                tool_type: "function".to_string(),
-                function: crate::endpoints::chat::ChatFunctionCall {
-                    name: function_name,
-                    arguments: args_value,
-                },
-                index: None,
-            });
+            tool_calls.push(function_call_to_tool_call(ChatFunctionCall {
+                name: function_name,
+                arguments: args_value,
+            }));
         }
     }
 
@@ -118,7 +133,7 @@ fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
 
     let mut tool_calls = Vec::new();
 
-    for (i, cap) in PIPE_TOOL_CALL_REGEX.captures_iter(content).enumerate() {
+    for cap in PIPE_TOOL_CALL_REGEX.captures_iter(content) {
         let inner = cap.get(1)?.as_str();
 
         // Split into function name and arguments
@@ -141,15 +156,10 @@ fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
 
         // Validate and parse JSON
         if let Ok(args_value) = serde_json::from_str::<serde_json::Value>(args_json_str) {
-            tool_calls.push(ToolCall {
-                id: format!("call_{}", i),
-                tool_type: "function".to_string(),
-                function: crate::endpoints::chat::ChatFunctionCall {
-                    name: function_name,
-                    arguments: args_value,
-                },
-                index: None,
-            });
+            tool_calls.push(function_call_to_tool_call(ChatFunctionCall {
+                name: function_name,
+                arguments: args_value,
+            }));
         }
     }
 
@@ -175,7 +185,7 @@ fn tools_system_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> 
         r###"
 # Tools
 
-You may call one or more functions to assist with the user query
+You may call one or more functions to assist with the user query.
 
 You are provided with available function signatures within the following JSON array:
 
@@ -185,29 +195,19 @@ You are provided with available function signatures within the following JSON ar
 
 # Tool Calls
 
-When you need to call one or more tools, you must respond with a single JSON code block containing an array of tool call objects.
-The JSON array must be enclosed in a ```json fenced code block.
+When you need to call one or more tools, respond with a JSON array inside a ```json fenced code block.
 
-Each object in the array represents a single tool call and must have the following properties:
-- "id": A unique identifier for the tool call, e.g., "tool_call_0".
-- "type": The type of the tool, which must be "function".
-- "function": An object containing the function name and its arguments.
-
-The "function" object must have the following properties:
+Each object in the array must have:
 - "name": The name of the function to call.
-- "arguments": A JSON string of the arguments to pass to the function.
+- "arguments": The arguments to pass to the function as a JSON object.
 
 Example of a single tool call:
 
 ```json
 [
   {{
-    "id": "tool_call_0",
-    "type": "function",
-    "function": {{
-      "name": "get_weather",
-      "arguments": "{{"location": "Boston, MA"}}"
-    }}
+    "name": "get_weather",
+    "arguments": {{"location": "Boston, MA"}}
   }}
 ]
 ```
@@ -217,20 +217,12 @@ Example of multiple tool calls:
 ```json
 [
   {{
-    "id": "tool_call_0",
-    "type": "function",
-    "function": {{
-      "name": "search_web",
-      "arguments": "{{"query": "latest AI news"}}"
-    }}
+    "name": "search_web",
+    "arguments": {{"query": "latest AI news"}}
   }},
   {{
-    "id": "tool_call_1",
-    "type": "function",
-    "function": {{
-      "name": "summarize_text",
-      "arguments": "{{"text": "A long text to be summarized..."}}"
-    }}
+    "name": "summarize_text",
+    "arguments": {{"text": "A long text to be summarized..."}}
   }}
 ]
 ```
@@ -426,6 +418,36 @@ mod tests {
 
     #[test]
     fn test_chat_to_openai_message_assistant_with_tools() {
+        // Test the simplified format (just name and arguments)
+        let tool_calls_json = r#"[{"name":"view","arguments": { "file_path":"client/Cargo.toml" }}]"#;
+        let content_str = format!("```json\n{}\n```", tool_calls_json);
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str),
+        };
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
+        match open_ai_msg {
+            OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } => {
+                assert!(content.is_none());
+                let tool_calls = tool_calls.unwrap();
+                assert_eq!(tool_calls.len(), 1);
+                assert!(tool_calls[0].id.starts_with("call_"));
+                assert_eq!(tool_calls[0].tool_type, "function");
+                assert_eq!(tool_calls[0].function.name, "view");
+                assert_eq!(
+                    tool_calls[0].function.arguments,
+                    serde_json::json!({ "file_path": "client/Cargo.toml" })
+                );
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
+
+    #[test]
+    fn test_chat_to_openai_message_assistant_with_tools_legacy_format() {
+        // Test backwards compatibility with full ToolCall format
         let tool_calls_json = r#"[{"id":"tool_call_0","type":"function","function":{"name":"view","arguments": { "file_path":"client/Cargo.toml" }}}]"#;
         let content_str = format!("```json\n{}\n```", tool_calls_json);
         let chat_msg = ChatMessage::Assistant {
@@ -481,14 +503,10 @@ mod tests {
         });
 
         // We need to construct the tool call structure manually to match what the LLM sends
-        // The LLM sends a JSON array of tool calls
+        // The LLM sends a JSON array of tool calls (simplified format)
         let tool_calls = vec![serde_json::json!({
-            "id": "tool_call_0",
-            "type": "function",
-            "function": {
-                "name": "write",
-                "arguments": arguments.to_string() // arguments is a JSON string
-            }
+            "name": "write",
+            "arguments": arguments // arguments is a JSON object now
         })];
 
         let tool_calls_json = serde_json::to_string_pretty(&tool_calls).unwrap();
@@ -510,7 +528,7 @@ mod tests {
                 );
                 let tool_calls = tool_calls.expect("Tool calls should be parsed");
                 assert_eq!(tool_calls.len(), 1);
-                assert_eq!(tool_calls[0].id, "tool_call_0");
+                assert!(tool_calls[0].id.starts_with("call_"));
                 assert_eq!(tool_calls[0].function.name, "write");
                 // Verify the argument contains the nested backticks
                 let args_str = tool_calls[0].function.arguments.to_string();
@@ -580,6 +598,8 @@ mod tests {
                 assert!(content.is_none());
                 let tool_calls = tool_calls.unwrap();
                 assert_eq!(tool_calls.len(), 1);
+                assert!(tool_calls[0].id.starts_with("call_"));
+                assert_eq!(tool_calls[0].tool_type, "function");
                 assert_eq!(tool_calls[0].function.name, "read");
                 assert_eq!(
                     tool_calls[0].function.arguments["filePath"],
@@ -605,6 +625,8 @@ mod tests {
                 assert!(content.is_none());
                 let tool_calls = tool_calls.unwrap();
                 assert_eq!(tool_calls.len(), 1);
+                assert!(tool_calls[0].id.starts_with("call_"));
+                assert_eq!(tool_calls[0].tool_type, "function");
                 assert_eq!(tool_calls[0].function.name, "view");
                 assert_eq!(
                     tool_calls[0].function.arguments["file_path"],
