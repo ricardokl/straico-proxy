@@ -3,6 +3,7 @@ use crate::{
     streaming::{CompletionStream, SseChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
+use crate::router::Provider;
 use actix_web::HttpResponse;
 use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -91,12 +92,23 @@ impl StraicoProvider {
     }
 
     async fn handle_non_streaming_response(
-        straico_response: impl future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+        future_response: impl future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
+        provider: Option<Provider>,
     ) -> Result<HttpResponse, ProxyError> {
-        let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
+        let response = future_response.await?;
 
-        let openai_response = OpenAiChatResponse::try_from(straico_response)?;
-        Ok(HttpResponse::Ok().json(openai_response))
+        match provider {
+            Some(Provider::Straico) | None => {
+                let straico_response: StraicoChatResponse = response.json().await?;
+                let openai_response = OpenAiChatResponse::try_from(straico_response)?;
+                Ok(HttpResponse::Ok().json(openai_response))
+            }
+            _ => {
+                let json_response: serde_json::Value = response.json().await?;
+                Ok(HttpResponse::Ok().json(json_response))
+            }
+        }
+    }
     }
 
     pub async fn chat(
@@ -126,7 +138,7 @@ impl StraicoProvider {
                 straico_response,
             ))
         } else {
-            Self::handle_non_streaming_response(straico_response).await
+            Self::handle_non_streaming_response(straico_response, None).await
         }
     }
 }
