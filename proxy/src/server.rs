@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub struct AppState {
     pub client: StraicoClient,
     pub key: String,
+    pub router_client: Option<reqwest::Client>,
 }
 
 #[get("/v1/models")]
@@ -83,50 +84,69 @@ pub async fn openai_chat_completion(
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, ProxyError> {
     let openai_request = req.into_inner();
+    let model = openai_request.chat_request.model.clone();
     let stream = openai_request.stream;
-    let chat_request = StraicoChatRequest::try_from(openai_request)?;
 
-    let model = chat_request.model.clone();
+    // Determine the provider and create the appropriate future
+    if let Some(ref reqwest_client) = data.router_client {
+        // Router mode is active
+        let provider = Provider::from_model(&model)?;
 
-    let straico_response = data
-        .client
-        .clone()
-        .chat()
-        .bearer_auth(&data.key)
-        .json(chat_request)
-        .send();
+        if provider == Provider::Straico {
+            // Use Straico client even in router mode
+            let chat_request = StraicoChatRequest::try_from(openai_request)?;
+            let response = data
+                .client
+                .clone()
+                .chat()
+                .bearer_auth(&data.key)
+                .json(chat_request)
+                .send();
 
-    if stream {
-        Ok(create_streaming_response(model, straico_response, None))
+            if stream {
+                Ok(create_streaming_response(&model, response, Some(provider)))
+            } else {
+                handle_non_streaming_response(response, Some(provider)).await
+            }
+        } else {
+            // Use generic provider with reqwest_client
+            let api_key = std::env::var(provider.env_var_name()).map_err(|_| {
+                ProxyError::BadRequest(format!(
+                    "API key not found for provider: {}. Set {} environment variable.",
+                    provider,
+                    provider.env_var_name()
+                ))
+            })?;
+
+            let response = reqwest_client
+                .post(provider.base_url())
+                .bearer_auth(api_key)
+                .json(&openai_request)
+                .send();
+
+            if stream {
+                Ok(create_streaming_response(&model, response, Some(provider)))
+            } else {
+                handle_non_streaming_response(response, Some(provider)).await
+            }
+        }
     } else {
-        handle_non_streaming_response(straico_response, None).await
+        // Normal mode - always use Straico
+        let chat_request = StraicoChatRequest::try_from(openai_request)?;
+        let response = data
+            .client
+            .clone()
+            .chat()
+            .bearer_auth(&data.key)
+            .json(chat_request)
+            .send();
+
+        if stream {
+            Ok(create_streaming_response(&model, response, None))
+        } else {
+            handle_non_streaming_response(response, None).await
+        }
     }
-}
-
-#[post("/v1/chat/completions")]
-pub async fn router_chat_completion(
-    req: web::Json<OpenAiChatRequest>,
-    data: web::Data<AppState>,
-) -> Result<HttpResponse, ProxyError> {
-    let openai_request = req.into_inner();
-
-    // Parse provider from model prefix
-    let provider = Provider::from_model(&openai_request.chat_request.model)?;
-
-    // Get API key from environment
-    let api_key = std::env::var(provider.env_var_name()).map_err(|_| {
-        ProxyError::BadRequest(format!(
-            "API key not found for provider: {}. Set {} environment variable.",
-            provider,
-            provider.env_var_name()
-        ))
-    })?;
-
-    // Handle Straico separately (needs conversion)
-    if provider.needs_conversion() {};
-
-    let implementation = provider.get_implementation(&data.client);
-    implementation.chat(openai_request, &api_key).await
 }
 
 /// Safely gets the current Unix timestamp, with fallback for edge cases
@@ -150,7 +170,7 @@ fn create_streaming_response(
             let created = get_current_timestamp();
 
             let initial_chunk = stream::once(future::ready(
-                SseChunk::from(CompletionStream::initial_chunk(&model, &id, created)).try_into(),
+                SseChunk::from(CompletionStream::initial_chunk(model, &id, created)).try_into(),
             ));
 
             let (remote, remote_handle) = future_response.remote_handle();

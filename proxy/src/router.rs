@@ -1,8 +1,6 @@
 use crate::error::ProxyError;
-use crate::providers::{GenericProvider, ProviderImpl};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use straico_client::client::StraicoClient;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -17,6 +15,16 @@ pub enum GenericProviderType {
 pub enum Provider {
     Straico,
     Generic(GenericProviderType),
+}
+
+impl GenericProviderType {
+    pub fn base_url(&self) -> &'static str {
+        match self {
+            GenericProviderType::SambaNova => "https://api.sambanova.ai/v1/chat/completions",
+            GenericProviderType::Cerebras => "https://api.cerebras.ai/v1/chat/completions",
+            GenericProviderType::Groq => "https://api.groq.com/openai/v1/chat/completions",
+        }
+    }
 }
 
 impl Provider {
@@ -43,11 +51,7 @@ impl Provider {
     pub fn base_url(&self) -> &'static str {
         match self {
             Provider::Straico => "https://api.straico.com/v2",
-            Provider::Generic(p) => match p {
-                GenericProviderType::SambaNova => "https://api.sambanova.ai/v1/chat/completions",
-                GenericProviderType::Cerebras => "https://api.cerebras.ai/v1/chat/completions",
-                GenericProviderType::Groq => "https://api.groq.com/openai/v1/chat/completions",
-            },
+            Provider::Generic(p) => p.base_url(),
         }
     }
 
@@ -60,21 +64,6 @@ impl Provider {
                 GenericProviderType::Cerebras => "CEREBRAS_API_KEY",
                 GenericProviderType::Groq => "GROQ_API_KEY",
             },
-        }
-    }
-
-    /// Check if this provider requires response conversion
-    pub fn needs_conversion(&self) -> bool {
-        matches!(self, Provider::Straico)
-    }
-
-    pub fn get_implementation(&self, _client: &StraicoClient) -> ProviderImpl {
-        match self {
-            Provider::Straico => todo!(),
-            Provider::Generic(_) => ProviderImpl::Generic(GenericProvider::new(
-                self.base_url().to_string(),
-                self.to_string(),
-            )),
         }
     }
 }
