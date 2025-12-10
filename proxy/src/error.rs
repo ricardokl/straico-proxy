@@ -8,7 +8,7 @@ use thiserror::Error;
 use crate::streaming::create_error_chunk_with_type;
 
 #[derive(Error, Debug)]
-pub enum CustomError {
+pub enum ProxyError {
     #[error("Failed to serialize or deserialize JSON")]
     SerdeJson(#[from] serde_json::Error),
     #[error("Error from HTTP client")]
@@ -29,24 +29,24 @@ pub enum CustomError {
     BadRequest(String),
 }
 
-impl CustomError {
+impl ProxyError {
     pub fn to_streaming_chunk(&self) -> Value {
         let message = match self {
-            CustomError::MissingRequiredField { field } => {
+            ProxyError::MissingRequiredField { field } => {
                 format!("Missing required field: {field}")
             }
-            CustomError::InvalidParameter { parameter, reason } => {
+            ProxyError::InvalidParameter { parameter, reason } => {
                 format!("Invalid parameter '{parameter}': {reason}")
             }
-            CustomError::ToolEmbedding(e) => format!("Tool error: {e}"),
-            CustomError::SerdeJson(e) => format!("Invalid JSON: {e}"),
-            CustomError::ReqwestClient(e) => format!("Network error: {e}"),
-            CustomError::Straico(e) => format!("Upstream API error: {e}"),
-            CustomError::ResponseParse(_) => {
+            ProxyError::ToolEmbedding(e) => format!("Tool error: {e}"),
+            ProxyError::SerdeJson(e) => format!("Invalid JSON: {e}"),
+            ProxyError::ReqwestClient(e) => format!("Network error: {e}"),
+            ProxyError::Straico(e) => format!("Upstream API error: {e}"),
+            ProxyError::ResponseParse(_) => {
                 "Failed to parse response from upstream API".to_string()
             }
-            CustomError::Chat(e) => format!("Chat processing error: {e}"),
-            CustomError::BadRequest(e) => format!("Bad request: {e}"),
+            ProxyError::Chat(e) => format!("Chat processing error: {e}"),
+            ProxyError::BadRequest(e) => format!("Bad request: {e}"),
         };
         create_error_chunk_with_type(&message, self.error_type(), self.error_code())
     }
@@ -54,40 +54,40 @@ impl CustomError {
     /// Maps the error to an appropriate OpenAI-compatible error type
     pub fn error_type(&self) -> &'static str {
         match self {
-            CustomError::SerdeJson(_) => "invalid_request_error",
-            CustomError::ReqwestClient(_) => "api_error",
-            CustomError::Straico(_) => "api_error",
-            CustomError::ResponseParse(_) => "api_error",
-            CustomError::ToolEmbedding(_) => "invalid_request_error",
-            CustomError::MissingRequiredField { .. } => "invalid_request_error",
-            CustomError::InvalidParameter { .. } => "invalid_request_error",
-            CustomError::Chat(_) => "invalid_request_error",
-            CustomError::BadRequest(_) => "invalid_request_error",
+            ProxyError::SerdeJson(_) => "invalid_request_error",
+            ProxyError::ReqwestClient(_) => "api_error",
+            ProxyError::Straico(_) => "api_error",
+            ProxyError::ResponseParse(_) => "api_error",
+            ProxyError::ToolEmbedding(_) => "invalid_request_error",
+            ProxyError::MissingRequiredField { .. } => "invalid_request_error",
+            ProxyError::InvalidParameter { .. } => "invalid_request_error",
+            ProxyError::Chat(_) => "invalid_request_error",
+            ProxyError::BadRequest(_) => "invalid_request_error",
         }
     }
 
     /// Maps the error to an appropriate OpenAI-compatible error code
     pub fn error_code(&self) -> Option<&'static str> {
         match self {
-            CustomError::SerdeJson(_) => Some("invalid_json"),
-            CustomError::ReqwestClient(_) => Some("network_error"),
-            CustomError::Straico(_) => Some("upstream_error"),
-            CustomError::ResponseParse(_) => Some("response_parse_error"),
-            CustomError::ToolEmbedding(_) => Some("tool_error"),
-            CustomError::MissingRequiredField { .. } => Some("missing_field"),
-            CustomError::InvalidParameter { .. } => Some("invalid_parameter"),
-            CustomError::Chat(_) => Some("chat_error"),
-            CustomError::BadRequest(_) => Some("bad_request"),
+            ProxyError::SerdeJson(_) => Some("invalid_json"),
+            ProxyError::ReqwestClient(_) => Some("network_error"),
+            ProxyError::Straico(_) => Some("upstream_error"),
+            ProxyError::ResponseParse(_) => Some("response_parse_error"),
+            ProxyError::ToolEmbedding(_) => Some("tool_error"),
+            ProxyError::MissingRequiredField { .. } => Some("missing_field"),
+            ProxyError::InvalidParameter { .. } => Some("invalid_parameter"),
+            ProxyError::Chat(_) => Some("chat_error"),
+            ProxyError::BadRequest(_) => Some("bad_request"),
         }
     }
 }
 
-impl ResponseError for CustomError {
+impl ResponseError for ProxyError {
     fn status_code(&self) -> StatusCode {
         match self {
-            CustomError::SerdeJson(_) => StatusCode::BAD_REQUEST,
-            CustomError::BadRequest(_) => StatusCode::BAD_REQUEST,
-            CustomError::ReqwestClient(e) => {
+            ProxyError::SerdeJson(_) => StatusCode::BAD_REQUEST,
+            ProxyError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            ProxyError::ReqwestClient(e) => {
                 // Return specific status codes based on the reqwest error type
                 if e.is_timeout() {
                     StatusCode::GATEWAY_TIMEOUT
@@ -101,7 +101,7 @@ impl ResponseError for CustomError {
                     StatusCode::INTERNAL_SERVER_ERROR
                 }
             }
-            CustomError::Straico(e) => {
+            ProxyError::Straico(e) => {
                 // Try to extract status code from StraicoError if it wraps a reqwest error
                 match e {
                     straico_client::StraicoError::Request(req_err) => {
@@ -119,31 +119,31 @@ impl ResponseError for CustomError {
                     _ => StatusCode::BAD_GATEWAY,
                 }
             }
-            CustomError::ResponseParse(_) => StatusCode::BAD_GATEWAY,
-            CustomError::ToolEmbedding(_) => StatusCode::BAD_REQUEST,
-            CustomError::MissingRequiredField { .. } => StatusCode::BAD_REQUEST,
-            CustomError::InvalidParameter { .. } => StatusCode::BAD_REQUEST,
-            CustomError::Chat(_) => StatusCode::BAD_REQUEST,
+            ProxyError::ResponseParse(_) => StatusCode::BAD_GATEWAY,
+            ProxyError::ToolEmbedding(_) => StatusCode::BAD_REQUEST,
+            ProxyError::MissingRequiredField { .. } => StatusCode::BAD_REQUEST,
+            ProxyError::InvalidParameter { .. } => StatusCode::BAD_REQUEST,
+            ProxyError::Chat(_) => StatusCode::BAD_REQUEST,
         }
     }
 
     fn error_response(&self) -> HttpResponse {
         let error_message = match self {
-            CustomError::MissingRequiredField { field } => {
+            ProxyError::MissingRequiredField { field } => {
                 format!("Missing required field: {field}")
             }
-            CustomError::InvalidParameter { parameter, reason } => {
+            ProxyError::InvalidParameter { parameter, reason } => {
                 format!("Invalid parameter '{parameter}': {reason}")
             }
-            CustomError::ToolEmbedding(e) => format!("Tool error: {e}"),
-            CustomError::SerdeJson(e) => format!("Invalid JSON: {e}"),
-            CustomError::ReqwestClient(e) => format!("Network error: {e}"),
-            CustomError::Straico(e) => format!("Upstream API error: {e}"),
-            CustomError::ResponseParse(_) => {
+            ProxyError::ToolEmbedding(e) => format!("Tool error: {e}"),
+            ProxyError::SerdeJson(e) => format!("Invalid JSON: {e}"),
+            ProxyError::ReqwestClient(e) => format!("Network error: {e}"),
+            ProxyError::Straico(e) => format!("Upstream API error: {e}"),
+            ProxyError::ResponseParse(_) => {
                 "Failed to parse response from upstream API".to_string()
             }
-            CustomError::Chat(e) => format!("Chat processing error: {e}"),
-            CustomError::BadRequest(e) => format!("Bad request: {e}"),
+            ProxyError::Chat(e) => format!("Chat processing error: {e}"),
+            ProxyError::BadRequest(e) => format!("Bad request: {e}"),
         };
 
         HttpResponse::build(self.status_code()).json(serde_json::json!({

@@ -6,7 +6,7 @@ use straico_client::endpoints::chat::common_types::{OpenAiChatMessage, ToolCall}
 use straico_client::endpoints::chat::response_types::{ChatChoice, OpenAiChatResponse, Usage};
 use straico_client::StraicoChatResponse;
 
-use crate::CustomError;
+use crate::ProxyError;
 
 /// Enum representing different types of SSE chunks
 #[derive(Serialize, Debug, Clone)]
@@ -98,7 +98,7 @@ impl From<OpenAiChatResponse> for CompletionStream {
 }
 
 impl TryFrom<StraicoChatResponse> for CompletionStream {
-    type Error = CustomError;
+    type Error = ProxyError;
     fn try_from(value: StraicoChatResponse) -> Result<Self, Self::Error> {
         Ok(OpenAiChatResponse::try_from(value).map(Into::into)?)
     }
@@ -163,14 +163,14 @@ impl From<Value> for SseChunk {
     }
 }
 
-impl From<CustomError> for SseChunk {
-    fn from(error: CustomError) -> Self {
+impl From<ProxyError> for SseChunk {
+    fn from(error: ProxyError) -> Self {
         SseChunk::Error(error.to_streaming_chunk())
     }
 }
 
 impl TryFrom<SseChunk> for Bytes {
-    type Error = CustomError;
+    type Error = ProxyError;
     fn try_from(value: SseChunk) -> Result<Self, Self::Error> {
         let json_bytes = match value {
             SseChunk::Data(stream) => serde_json::to_vec(&stream)?,
@@ -239,7 +239,7 @@ mod tests {
         };
 
         let sse_chunk = SseChunk::from(stream);
-        let bytes: Result<Bytes, CustomError> = sse_chunk.try_into();
+        let bytes: Result<Bytes, ProxyError> = sse_chunk.try_into();
         assert!(bytes.is_ok());
 
         let bytes_str = String::from_utf8(bytes.unwrap().to_vec()).unwrap();
@@ -258,7 +258,7 @@ mod tests {
     #[test]
     fn test_sse_chunk_done_serialization() {
         let done_chunk = SseChunk::from("[DONE]".to_string());
-        let bytes: Result<Bytes, CustomError> = done_chunk.try_into();
+        let bytes: Result<Bytes, ProxyError> = done_chunk.try_into();
         assert!(bytes.is_ok());
 
         let bytes_str = String::from_utf8(bytes.unwrap().to_vec()).unwrap();
@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn test_sse_chunk_error_serialization() {
         let error_chunk = SseChunk::from(create_error_chunk("Test error message"));
-        let bytes: Result<Bytes, CustomError> = error_chunk.try_into();
+        let bytes: Result<Bytes, ProxyError> = error_chunk.try_into();
         assert!(bytes.is_ok());
 
         let bytes_str = String::from_utf8(bytes.unwrap().to_vec()).unwrap();
@@ -299,12 +299,12 @@ mod tests {
 
     #[test]
     fn test_custom_error_to_sse_chunk() {
-        let custom_error = CustomError::InvalidParameter {
+        let custom_error = ProxyError::InvalidParameter {
             parameter: "temperature".to_string(),
             reason: "Invalid parameter".to_string(),
         };
         let error_chunk = SseChunk::from(custom_error);
-        let bytes: Result<Bytes, CustomError> = error_chunk.try_into();
+        let bytes: Result<Bytes, ProxyError> = error_chunk.try_into();
         assert!(bytes.is_ok());
 
         let bytes_str = String::from_utf8(bytes.unwrap().to_vec()).unwrap();
@@ -323,7 +323,7 @@ mod tests {
                 "test-id",
                 123,
             )),
-            Err(CustomError::InvalidParameter {
+            Err(ProxyError::InvalidParameter {
                 parameter: "model".to_string(),
                 reason: "Simulated API error".to_string(),
             }),
@@ -335,7 +335,7 @@ mod tests {
 
         // Collect the stream results
         let runtime = tokio::runtime::Runtime::new().unwrap();
-        let results: Vec<Result<Bytes, CustomError>> =
+        let results: Vec<Result<Bytes, ProxyError>> =
             runtime.block_on(async { error_stream.collect().await });
 
         assert_eq!(results.len(), 2);

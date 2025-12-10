@@ -1,5 +1,5 @@
 use crate::{
-    error::CustomError, providers::StraicoProvider, router::Provider, types::OpenAiChatRequest,
+    error::ProxyError, providers::StraicoProvider, router::Provider, types::OpenAiChatRequest,
 };
 use actix_web::{get, post, web, HttpResponse};
 use futures::TryStreamExt;
@@ -13,7 +13,7 @@ pub struct AppState {
 }
 
 #[get("/v1/models")]
-pub async fn models_handler(data: web::Data<AppState>) -> Result<HttpResponse, CustomError> {
+pub async fn models_handler(data: web::Data<AppState>) -> Result<HttpResponse, ProxyError> {
     let client = data.client.clone();
     let straico_response = client.models().bearer_auth(&data.key).send().await?;
 
@@ -31,7 +31,7 @@ pub async fn models_handler(data: web::Data<AppState>) -> Result<HttpResponse, C
         }
     }
 
-    let body_stream = straico_response.bytes_stream().map_err(CustomError::from);
+    let body_stream = straico_response.bytes_stream().map_err(ProxyError::from);
     Ok(response_builder.streaming(body_stream))
 }
 
@@ -44,7 +44,7 @@ pub async fn models_handler(data: web::Data<AppState>) -> Result<HttpResponse, C
 pub async fn model_handler(
     data: web::Data<AppState>,
     model_id: web::Path<String>,
-) -> Result<HttpResponse, CustomError> {
+) -> Result<HttpResponse, ProxyError> {
     let client = data.client.clone();
     let straico_response = client
         .model(&model_id)
@@ -66,7 +66,7 @@ pub async fn model_handler(
         }
     }
 
-    let body_stream = straico_response.bytes_stream().map_err(CustomError::from);
+    let body_stream = straico_response.bytes_stream().map_err(ProxyError::from);
     Ok(response_builder.streaming(body_stream))
 }
 
@@ -74,7 +74,7 @@ pub async fn model_handler(
 pub async fn openai_chat_completion(
     req: web::Json<OpenAiChatRequest>,
     data: web::Data<AppState>,
-) -> Result<HttpResponse, CustomError> {
+) -> Result<HttpResponse, ProxyError> {
     let openai_request = req.into_inner();
 
     let provider = StraicoProvider::new(data.client.clone());
@@ -85,7 +85,7 @@ pub async fn openai_chat_completion(
 pub async fn router_chat_completion(
     req: web::Json<OpenAiChatRequest>,
     data: web::Data<AppState>,
-) -> Result<HttpResponse, CustomError> {
+) -> Result<HttpResponse, ProxyError> {
     let openai_request = req.into_inner();
 
     // Parse provider from model prefix
@@ -93,7 +93,7 @@ pub async fn router_chat_completion(
 
     // Get API key from environment
     let api_key = std::env::var(provider.env_var_name()).map_err(|_| {
-        CustomError::BadRequest(format!(
+        ProxyError::BadRequest(format!(
             "API key not found for provider: {}. Set {} environment variable.",
             provider,
             provider.env_var_name()

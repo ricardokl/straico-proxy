@@ -1,5 +1,5 @@
 use crate::{
-    error::CustomError,
+    error::ProxyError,
     streaming::{CompletionStream, SseChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
@@ -29,7 +29,7 @@ impl ProviderImpl {
         &self,
         request: OpenAiChatRequest,
         api_key: &str,
-    ) -> Result<HttpResponse, CustomError> {
+    ) -> Result<HttpResponse, ProxyError> {
         match self {
             ProviderImpl::Straico(p) => p.chat(request, api_key).await,
             ProviderImpl::Generic(p) => p.chat(request, api_key).await,
@@ -73,7 +73,7 @@ impl StraicoProvider {
             .map_ok(SseChunk::from)
             .map(|result| match result {
                 Ok(chunk) => chunk.try_into(),
-                Err(e) => SseChunk::from(CustomError::from(e)).try_into(),
+                Err(e) => SseChunk::from(ProxyError::from(e)).try_into(),
             })
             .into_stream();
 
@@ -93,7 +93,7 @@ impl StraicoProvider {
 
     async fn handle_non_streaming_response(
         straico_response: impl future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
-    ) -> Result<HttpResponse, CustomError> {
+    ) -> Result<HttpResponse, ProxyError> {
         let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
 
         let openai_response = match OpenAiChatResponse::try_from(straico_response.clone()) {
@@ -114,7 +114,7 @@ impl StraicoProvider {
         &self,
         request: OpenAiChatRequest,
         api_key: &str,
-    ) -> Result<HttpResponse, CustomError> {
+    ) -> Result<HttpResponse, ProxyError> {
         let stream = request.stream;
         let chat_request = StraicoChatRequest::try_from(request)?;
         let model = if stream {
@@ -159,7 +159,7 @@ impl GenericProvider {
         &self,
         mut request: OpenAiChatRequest,
         api_key: &str,
-    ) -> Result<HttpResponse, CustomError> {
+    ) -> Result<HttpResponse, ProxyError> {
         // Strip the provider prefix from the model name
         if let Some(model_without_prefix) = request.chat_request.model.split('/').nth(1) {
             request.chat_request.model = model_without_prefix.to_string();
@@ -185,7 +185,7 @@ impl GenericProvider {
             }
         }
 
-        let body_stream = response.bytes_stream().map_err(CustomError::from);
+        let body_stream = response.bytes_stream().map_err(ProxyError::from);
 
         Ok(response_builder.streaming(body_stream))
     }

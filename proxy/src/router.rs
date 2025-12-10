@@ -1,4 +1,4 @@
-use crate::error::CustomError;
+use crate::error::ProxyError;
 use crate::providers::{GenericProvider, ProviderImpl, StraicoProvider};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -15,18 +15,18 @@ pub enum Provider {
 
 impl Provider {
     /// Parse provider from model string prefix (before first '/')
-    pub fn from_model(model: &str) -> Result<Self, CustomError> {
+    pub fn from_model(model: &str) -> Result<Self, ProxyError> {
         let prefix = model
             .split('/')
             .next()
-            .ok_or_else(|| CustomError::BadRequest("Invalid model format".to_string()))?;
+            .ok_or_else(|| ProxyError::BadRequest("Invalid model format".to_string()))?;
 
         match prefix.to_lowercase().as_str() {
             "straico" => Ok(Provider::Straico),
             "sambanova" => Ok(Provider::SambaNova),
             "cerebras" => Ok(Provider::Cerebras),
             "groq" => Ok(Provider::Groq),
-            _ => Err(CustomError::BadRequest(format!(
+            _ => Err(ProxyError::BadRequest(format!(
                 "Unknown provider: {}",
                 prefix
             ))),
