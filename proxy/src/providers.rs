@@ -1,26 +1,8 @@
-use crate::router::Provider;
-use crate::{
-    error::ProxyError,
-    streaming::{CompletionStream, SseChunk},
-    types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
-};
+use crate::{error::ProxyError, types::OpenAiChatRequest};
 use actix_web::HttpResponse;
-use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
-use std::time::{SystemTime, UNIX_EPOCH};
-use straico_client::{client::StraicoClient, StraicoChatRequest};
-use tokio::time::Duration;
-use uuid::Uuid;
-
-/// Safely gets the current Unix timestamp, with fallback for edge cases
-fn get_current_timestamp() -> u64 {
-    match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_secs(),
-        Err(_) => 1704067200, // Fallback to 2024-01-01
-    }
-}
+use futures::TryStreamExt;
 
 pub enum ProviderImpl {
-    Straico(StraicoProvider),
     Generic(GenericProvider),
 }
 
@@ -31,130 +13,7 @@ impl ProviderImpl {
         api_key: &str,
     ) -> Result<HttpResponse, ProxyError> {
         match self {
-            ProviderImpl::Straico(p) => p.chat(request, api_key).await,
             ProviderImpl::Generic(p) => p.chat(request, api_key).await,
-        }
-    }
-}
-
-pub struct StraicoProvider {
-    pub client: StraicoClient,
-}
-
-impl StraicoProvider {
-    pub fn new(client: StraicoClient) -> Self {
-        Self { client }
-    }
-
-    fn create_streaming_response(
-        model: String,
-        future_response: impl future::Future<Output = Result<reqwest::Response, reqwest::Error>>
-            + Send
-            + 'static,
-        provider: Option<Provider>,
-    ) -> HttpResponse {
-        match provider {
-            Some(Provider::Straico) | None => {
-                let id = format!("chatcmpl-{}", Uuid::new_v4());
-                let created = get_current_timestamp();
-
-                let initial_chunk = stream::once(future::ready(
-                    SseChunk::from(CompletionStream::initial_chunk(&model, &id, created))
-                        .try_into(),
-                ));
-
-                let (remote, remote_handle) = future_response.remote_handle();
-
-                let heartbeat = tokio_stream::StreamExt::throttle(
-                    stream::repeat_with(|| {
-                        SseChunk::from(CompletionStream::heartbeat_chunk()).try_into()
-                    }),
-                    Duration::from_secs(3),
-                )
-                .take_until(remote);
-
-                let straico_stream = remote_handle
-                    .and_then(reqwest::Response::json::<StraicoChatResponse>)
-                    .map_ok(|x| CompletionStream::try_from(x).unwrap())
-                    .map_ok(SseChunk::from)
-                    .map(|result| match result {
-                        Ok(chunk) => chunk.try_into(),
-                        Err(e) => SseChunk::from(ProxyError::from(e)).try_into(),
-                    })
-                    .into_stream();
-
-                let done = stream::once(future::ready(
-                    SseChunk::from("[DONE]".to_string()).try_into(),
-                ));
-
-                let response_stream = initial_chunk
-                    .chain(heartbeat)
-                    .chain(straico_stream)
-                    .chain(done);
-
-                HttpResponse::Ok()
-                    .content_type("text/event-stream")
-                    .streaming(response_stream)
-            }
-            _ => {
-                let stream = future_response
-                    .map_ok(|resp| resp.bytes_stream().map_err(ProxyError::from))
-                    .map_err(ProxyError::from)
-                    .try_flatten_stream();
-
-                HttpResponse::Ok().streaming(stream)
-            }
-        }
-    }
-
-    async fn handle_non_streaming_response(
-        future_response: impl future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
-        provider: Option<Provider>,
-    ) -> Result<HttpResponse, ProxyError> {
-        let response = future_response.await?;
-
-        match provider {
-            Some(Provider::Straico) | None => {
-                let straico_response: StraicoChatResponse = response.json().await?;
-                let openai_response = OpenAiChatResponse::try_from(straico_response)?;
-                Ok(HttpResponse::Ok().json(openai_response))
-            }
-            _ => {
-                let json_response: serde_json::Value = response.json().await?;
-                Ok(HttpResponse::Ok().json(json_response))
-            }
-        }
-    }
-
-    pub async fn chat(
-        &self,
-        request: OpenAiChatRequest,
-        api_key: &str,
-    ) -> Result<HttpResponse, ProxyError> {
-        let stream = request.stream;
-        let chat_request = StraicoChatRequest::try_from(request)?;
-        let model = if stream {
-            Some(chat_request.model.clone())
-        } else {
-            None
-        };
-
-        let straico_response = self
-            .client
-            .clone()
-            .chat()
-            .bearer_auth(api_key)
-            .json(chat_request)
-            .send();
-
-        if stream {
-            Ok(Self::create_streaming_response(
-                model.unwrap(),
-                straico_response,
-                None,
-            ))
-        } else {
-            Self::handle_non_streaming_response(straico_response, None).await
         }
     }
 }

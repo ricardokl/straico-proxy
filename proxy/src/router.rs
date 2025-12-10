@@ -1,5 +1,5 @@
 use crate::error::ProxyError;
-use crate::providers::{GenericProvider, ProviderImpl, StraicoProvider};
+use crate::providers::{GenericProvider, ProviderImpl};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use straico_client::client::StraicoClient;
@@ -68,9 +68,9 @@ impl Provider {
         matches!(self, Provider::Straico)
     }
 
-    pub fn get_implementation(&self, client: &StraicoClient) -> ProviderImpl {
+    pub fn get_implementation(&self, _client: &StraicoClient) -> ProviderImpl {
         match self {
-            Provider::Straico => ProviderImpl::Straico(StraicoProvider::new(client.clone())),
+            Provider::Straico => todo!(),
             Provider::Generic(_) => ProviderImpl::Generic(GenericProvider::new(
                 self.base_url().to_string(),
                 self.to_string(),
