@@ -5,7 +5,6 @@ use crate::{
 };
 use actix_web::HttpResponse;
 use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
-use log::error;
 use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::{client::StraicoClient, StraicoChatRequest};
 use tokio::time::Duration;
@@ -96,8 +95,9 @@ impl StraicoProvider {
     ) -> Result<HttpResponse, ProxyError> {
         let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
 
-            let openai_response = OpenAiChatResponse::try_from(straico_response)?;
-            Ok(HttpResponse::Ok().json(openai_response))    }
+        let openai_response = OpenAiChatResponse::try_from(straico_response)?;
+        Ok(HttpResponse::Ok().json(openai_response))
+    }
 
     pub async fn chat(
         &self,
