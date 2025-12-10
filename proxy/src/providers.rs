@@ -96,19 +96,8 @@ impl StraicoProvider {
     ) -> Result<HttpResponse, ProxyError> {
         let straico_response: StraicoChatResponse = straico_response.await?.json().await?;
 
-        let openai_response = match OpenAiChatResponse::try_from(straico_response.clone()) {
-            Ok(response) => response,
-            Err(e) => {
-                error!(
-                    "Failed to convert Straico response to OpenAI format: {}\nRaw Straico Response: {}",
-                    e,
-                    serde_json::to_string_pretty(&straico_response).unwrap_or_default()
-                );
-                return Err(e.into());
-            }
-        };
-        Ok(HttpResponse::Ok().json(openai_response))
-    }
+            let openai_response = OpenAiChatResponse::try_from(straico_response)?;
+            Ok(HttpResponse::Ok().json(openai_response))    }
 
     pub async fn chat(
         &self,
