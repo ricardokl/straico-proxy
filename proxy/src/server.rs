@@ -6,7 +6,7 @@ use crate::{
 };
 use actix_web::{get, post, web, HttpResponse};
 use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
-use log::warn;
+use log::{debug, warn};
 use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::client::StraicoClient;
 use straico_client::{OpenAiChatResponse, StraicoChatRequest, StraicoChatResponse};
@@ -84,22 +84,27 @@ pub async fn openai_chat_completion(
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, ProxyError> {
     let openai_request = req.into_inner();
+    debug!("{}", serde_json::to_string_pretty(&openai_request.clone())?);
     let model = openai_request.chat_request.model.clone();
     let stream = openai_request.stream;
+    let AppState {
+        ref client,
+        ref key,
+        ref router_client,
+    } = &*data.into_inner();
 
     // Determine the provider and create the appropriate future
-    if let Some(ref reqwest_client) = data.router_client {
+    if let Some(ref router_client) = router_client {
         // Router mode is active
         let provider = Provider::from_model(&model)?;
 
         if provider == Provider::Straico {
             // Use Straico client even in router mode
             let chat_request = StraicoChatRequest::try_from(openai_request)?;
-            let response = data
-                .client
+            let response = client
                 .clone()
                 .chat()
-                .bearer_auth(&data.key)
+                .bearer_auth(key)
                 .json(chat_request)
                 .send();
 
@@ -118,7 +123,7 @@ pub async fn openai_chat_completion(
                 ))
             })?;
 
-            let response = reqwest_client
+            let response = router_client
                 .post(provider.base_url())
                 .bearer_auth(api_key)
                 .json(&openai_request)
@@ -133,11 +138,10 @@ pub async fn openai_chat_completion(
     } else {
         // Normal mode - always use Straico
         let chat_request = StraicoChatRequest::try_from(openai_request)?;
-        let response = data
-            .client
+        let response = client
             .clone()
             .chat()
-            .bearer_auth(&data.key)
+            .bearer_auth(key)
             .json(chat_request)
             .send();
 
