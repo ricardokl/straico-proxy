@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use actix_web::{web, App, HttpResponse, HttpServer};
 use anyhow::Context;
 use clap::Parser;
@@ -72,12 +74,17 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Completions endpoint is at /v1/chat/completions");
 
-    let router_mode = cli.router;
+    let client = StraicoClient::builder()
+        .pool_max_idle_per_host(25)
+        .pool_idle_timeout(Duration::from_secs(90))
+        .tcp_keepalive(Duration::from_secs(90))
+        .timeout(Duration::from_secs(90))
+        .build()?;
 
     HttpServer::new(move || {
         let app_state = server::AppState {
-            client: StraicoClient::new(),
-            router_client: router_mode.then(reqwest::Client::new),
+            client: client.clone(),
+            router_client: cli.router.then(reqwest::Client::new),
             key: api_key.clone(),
         };
 

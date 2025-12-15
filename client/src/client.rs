@@ -1,8 +1,10 @@
-use reqwest::{Client, RequestBuilder};
+use reqwest::{Client, ClientBuilder, RequestBuilder};
 use serde::Serialize;
-use std::{fmt::Display, future::Future, marker::PhantomData};
+use std::{fmt::Display, future::Future, marker::PhantomData, time::Duration};
 
 use crate::endpoints::chat::{ChatMessage, ChatRequest};
+
+const BASE_URL: &str = "https://api.straico.com";
 
 /// Represents the state where no API key has been set for the request
 pub struct NoApiKey;
@@ -27,10 +29,7 @@ pub struct StraicoRequestBuilder<Api, Payload>(
 
 impl From<Client> for StraicoClient {
     fn from(value: Client) -> Self {
-        Self {
-            client: value,
-            base_url: None,
-        }
+        Self { client: value }
     }
 }
 
@@ -41,15 +40,17 @@ impl From<Client> for StraicoClient {
 /// using `Into<StraicoClient>`.
 #[derive(Clone)]
 pub struct StraicoClient {
-    pub client: Client,
-    pub base_url: Option<String>,
+    pub client: reqwest::Client,
+}
+
+pub struct StraicoClientBuilder {
+    pub client: ClientBuilder,
 }
 
 impl Default for StraicoClient {
     fn default() -> Self {
         Self {
             client: Client::new(),
-            base_url: None,
         }
     }
 }
@@ -67,33 +68,20 @@ impl StraicoClient {
         StraicoClient::default()
     }
 
-    pub fn with_base_url(base_url: String) -> Self {
-        Self {
-            client: Client::new(),
-            base_url: Some(base_url),
-        }
-    }
-
     /// Creates a request builder for the new chat endpoint.
     ///
     /// This corresponds to `POST /v2/chat/completions` on the Straico API.
     pub fn chat(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest<ChatMessage>> {
-        let url = self
-            .base_url
-            .unwrap_or_else(|| "https://api.straico.com".to_string())
-            + "/v2/chat/completions";
-        self.client.post(&url).into()
+        self.client
+            .post(BASE_URL.to_string() + "/v2/chat/completions")
+            .into()
     }
 
     /// Creates a request builder for listing models.
     ///
     /// This corresponds to `GET /v2/models` on the Straico API.
     pub fn models(self) -> StraicoRequestBuilder<NoApiKey, ()> {
-        let url = self
-            .base_url
-            .unwrap_or_else(|| "https://api.straico.com".to_string())
-            + "/v2/models";
-        self.client.get(&url).into()
+        self.client.get(BASE_URL.to_string() + "/v2/models").into()
     }
 
     /// Creates a request builder for retrieving a single model by ID.
@@ -102,12 +90,47 @@ impl StraicoClient {
     /// Pass the model ID exactly as returned by the `/v2/models` endpoint
     /// (for example: `"amazon/nova-lite-v1"`).
     pub fn model(self, model_id: &str) -> StraicoRequestBuilder<NoApiKey, ()> {
-        let mut url = self
-            .base_url
-            .unwrap_or_else(|| "https://api.straico.com".to_string());
-        url.push_str("/v2/models/");
+        let mut url = BASE_URL.to_string() + "/v2/models";
         url.push_str(model_id);
         self.client.get(&url).into()
+    }
+
+    pub fn builder() -> StraicoClientBuilder {
+        StraicoClientBuilder {
+            client: reqwest::Client::builder(),
+        }
+    }
+}
+
+impl StraicoClientBuilder {
+    pub fn pool_max_idle_per_host(self, max: usize) -> StraicoClientBuilder {
+        Self {
+            client: self.client.pool_max_idle_per_host(max),
+        }
+    }
+
+    pub fn pool_idle_timeout<D: Into<Option<Duration>>>(self, val: D) -> StraicoClientBuilder {
+        Self {
+            client: self.client.pool_idle_timeout(val),
+        }
+    }
+
+    pub fn tcp_keepalive<D: Into<Option<Duration>>>(self, val: D) -> StraicoClientBuilder {
+        Self {
+            client: self.client.tcp_keepalive(val),
+        }
+    }
+
+    pub fn timeout(self, timeout: Duration) -> StraicoClientBuilder {
+        Self {
+            client: self.client.timeout(timeout),
+        }
+    }
+
+    pub fn build(self) -> Result<StraicoClient, reqwest::Error> {
+        Ok(StraicoClient {
+            client: self.client.build()?,
+        })
     }
 }
 
