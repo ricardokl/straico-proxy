@@ -15,8 +15,7 @@ pub struct Cli {
     #[arg(long, default_value = "8000")]
     pub port: u16,
 
-    // The parser adds "[env STRAICO_API_KEY]" in the end
-    /// Set API key for Straico or use
+    /// Set API key for Straico or use env
     #[arg(long, env = "STRAICO_API_KEY", hide_env_values = true)]
     pub api_key: Option<String>,
 
