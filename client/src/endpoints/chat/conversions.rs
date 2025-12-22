@@ -20,6 +20,62 @@ static XML_ARG_REGEX: Lazy<Regex> =
 static PIPE_TOOL_CALL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<\|tool_call_begin\|>(.*?)<\|tool_call_end\|>").unwrap());
 
+/// Unified template macro for generating tool system messages across different formats.
+/// This macro consolidates common instruction text while allowing format-specific customization.
+///
+/// # Parameters
+/// - `$function_signatures` - The formatted function signatures (JSON array, XML list, or Qwen XML)
+/// - `$wrapper_syntax` - The exact wrapper syntax (e.g., "```json ... ```" or "<tool_call>...</tool_call>")
+/// - `$call_structure` - Description of the structure within the wrapper
+/// - `$single_example` - Complete example of a single tool call
+/// - `$multiple_example` - Complete example of multiple tool calls
+macro_rules! unified_tool_system_message {
+    (
+        $function_signatures:expr,
+        $wrapper_syntax:expr,
+        $call_structure:expr,
+        $single_example:expr,
+        $multiple_example:expr
+    ) => {
+        format!(
+            r###"
+# Tools
+
+You may call one or more functions to assist with the user query.
+
+{}
+
+# Tool Call Format
+
+⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
+
+{}
+
+{}
+
+❌ DO NOT respond with tool calls in any other format. DO NOT omit the wrapper.
+
+## Examples
+
+The following examples demonstrate the REQUIRED format. Your responses must match this structure exactly.
+
+Example of a single tool call:
+
+{}
+
+Example of multiple tool calls:
+
+{}
+"###,
+            $function_signatures,
+            $wrapper_syntax,
+            $call_structure,
+            $single_example,
+            $multiple_example
+        )
+    };
+}
+
 /// Converts a ChatFunctionCall into a full ToolCall with generated ID
 fn function_call_to_tool_call(function: ChatFunctionCall) -> ToolCall {
     ToolCall {
@@ -53,6 +109,164 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
                 .map(function_call_to_tool_call)
                 .collect()
         })
+}
+
+/// Generates JSON tool system message
+fn json_tools_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
+    // This removes the wrapper that only adds the "type: function"
+    let functions = tools
+        .iter()
+        .map(|tool| {
+            let OpenAiTool::Function(function) = tool;
+            function
+        })
+        .collect::<Vec<_>>();
+
+    let function_signatures = format!(
+        "You are provided with available function signatures within the following JSON array:\n\n```json\n{}\n```",
+        serde_json::to_string_pretty(&functions)?
+    );
+
+    let wrapper_syntax = "```json\n[...]\n```";
+
+    let call_structure = "A JSON array where each object contains:\n- \"name\": The function name (string)\n- \"arguments\": The function arguments (JSON object)";
+
+    let single_example = r#"```json
+[
+  {
+    "name": "get_weather",
+    "arguments": {"location": "Boston, MA"}
+  }
+]
+```"#;
+
+    let multiple_example = r#"```json
+[
+  {
+    "name": "search_web",
+    "arguments": {"query": "latest AI news"}
+  },
+  {
+    "name": "summarize_text",
+    "arguments": {"text": "A long text to be summarized..."}
+  }
+]
+```"#;
+
+    let system_message = unified_tool_system_message!(
+        function_signatures,
+        wrapper_syntax,
+        call_structure,
+        single_example,
+        multiple_example
+    );
+
+    Ok(ChatMessage::system(system_message))
+}
+
+/// Generates XML tool system message
+fn xml_tools_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
+    let functions = tools
+        .iter()
+        .map(|tool| {
+            let OpenAiTool::Function(function) = tool;
+            function
+        })
+        .collect::<Vec<_>>();
+
+    let function_signatures = {
+        let formatted = functions
+            .iter()
+            .map(|f| {
+                let params = serde_json::to_string_pretty(&f.parameters).unwrap_or_default();
+                format!(
+                    "- Function: {}\n  Description: {}\n  Parameters: {}",
+                    f.name,
+                    f.description.as_deref().unwrap_or(""),
+                    params
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        format!("Available functions:\n{}", formatted)
+    };
+
+    let wrapper_syntax = "<tool_call>{function_name}\n<arg_key>{parameter_name}</arg_key>\n<arg_value>{parameter_value}</arg_value>\n</tool_call>";
+
+    let call_structure = "Each tool call must be wrapped in <tool_call> tags with the function name immediately after the opening tag. Parameters are specified using <arg_key> and <arg_value> pairs.";
+
+    let single_example = r#"<tool_call>get_weather
+<arg_key>location</arg_key>
+<arg_value>Boston, MA</arg_value>
+</tool_call>"#;
+
+    let multiple_example = r#"<tool_call>search_web
+<arg_key>query</arg_key>
+<arg_value>latest AI news</arg_value>
+</tool_call>
+<tool_call>summarize_text
+<arg_key>text</arg_key>
+<arg_value>A long text to be summarized...</arg_value>
+</tool_call>"#;
+
+    let system_message = unified_tool_system_message!(
+        function_signatures,
+        wrapper_syntax,
+        call_structure,
+        single_example,
+        multiple_example
+    );
+
+    Ok(ChatMessage::system(system_message))
+}
+
+/// Generates Qwen tool system message
+fn qwen_tools_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
+    let functions = tools
+        .iter()
+        .map(|tool| {
+            let OpenAiTool::Function(function) = tool;
+            function
+        })
+        .collect::<Vec<_>>();
+
+    let function_signatures = {
+        let json_functions = functions
+            .iter()
+            .map(|f| serde_json::to_string(f).unwrap_or_default())
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "You are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{}\n</tools>",
+            json_functions
+        )
+    };
+
+    let wrapper_syntax =
+        "<tool_call>\n{\"name\": <function-name>, \"arguments\": <args-json-object>}\n</tool_call>";
+
+    let call_structure = "Each tool call is a JSON object wrapped in <tool_call> XML tags. The JSON object must contain \"name\" and \"arguments\" fields.";
+
+    let single_example = r#"<tool_call>
+{"name": "get_weather", "arguments": {"location": "Boston, MA"}}
+</tool_call>"#;
+
+    let multiple_example = r#"<tool_call>
+{"name": "search_web", "arguments": {"query": "latest AI news"}}
+</tool_call>
+<tool_call>
+{"name": "summarize_text", "arguments": {"text": "A long text to be summarized..."}}
+</tool_call>"#;
+
+    let system_message = unified_tool_system_message!(
+        function_signatures,
+        wrapper_syntax,
+        call_structure,
+        single_example,
+        multiple_example
+    );
+
+    Ok(ChatMessage::system(system_message))
 }
 
 /// Helper to try parsing XML tool calls
@@ -146,69 +360,6 @@ fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     }
 }
 
-/// Generates tool system message for embedding in messages.
-fn tools_system_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
-    // This removes the wrapper that only adds the "type: function"
-    let functions = tools
-        .iter()
-        .map(|tool| {
-            let OpenAiTool::Function(function) = tool;
-            function
-        })
-        .collect::<Vec<_>>();
-
-    let system_message = format!(
-        r###"
-# Tools
-
-You may call one or more functions to assist with the user query.
-
-You are provided with available function signatures within the following JSON array:
-
-```json
-{}
-```
-
-# Tool Calls
-
-When you need to call one or more tools, respond with a JSON array inside a ```json fenced code block.
-
-Each object in the array must have:
-- "name": The name of the function to call.
-- "arguments": The arguments to pass to the function as a JSON object.
-
-Example of a single tool call:
-
-```json
-[
-  {{
-    "name": "get_weather",
-    "arguments": {{"location": "Boston, MA"}}
-  }}
-]
-```
-
-Example of multiple tool calls:
-
-```json
-[
-  {{
-    "name": "search_web",
-    "arguments": {{"query": "latest AI news"}}
-  }},
-  {{
-    "name": "summarize_text",
-    "arguments": {{"text": "A long text to be summarized..."}}
-  }}
-]
-```
-"###,
-        serde_json::to_string_pretty(&functions)?,
-    );
-
-    Ok(ChatMessage::system(system_message))
-}
-
 impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
     type Error = ChatError;
 
@@ -222,7 +373,7 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
 
         match request.tools {
             Some(tools) if !tools.is_empty() => {
-                messages.insert(0, tools_system_message(&tools)?);
+                messages.insert(0, json_tools_message(&tools)?);
             }
             _ => {}
         }
