@@ -77,6 +77,39 @@ pub struct ToolCall {
     pub function: ChatFunctionCall,
 }
 
+/// High-level provider that produced or will consume a given model ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelProvider {
+    Anthropic,
+    OpenAI,
+    Zai,
+    Kimi,
+    Qwen,
+    Unknown,
+}
+
+impl From<&str> for ModelProvider {
+    fn from(value: &str) -> Self {
+        // Model IDs are typically in the form "provider/model-name"
+        let provider_prefix = value.split('/').next().unwrap_or("").to_lowercase();
+        match provider_prefix.as_str() {
+            "anthropic" => ModelProvider::Anthropic,
+            "openai" => ModelProvider::OpenAI,
+            "z-ai" => ModelProvider::Zai,
+            "moonshotai" => ModelProvider::Kimi,
+            "qwen" => ModelProvider::Qwen,
+            _ => ModelProvider::Unknown,
+        }
+    }
+}
+
+impl ModelProvider {
+    /// Convenience helper mirroring the original API used in conversions.
+    pub fn from_model_id(model_id: &str) -> Self {
+        Self::from(model_id)
+    }
+}
+
 /// Represents a single message in the chat conversation.
 ///
 /// Each message variant has specific content requirements:
@@ -186,5 +219,49 @@ impl std::fmt::Display for ChatContent {
             ChatContent::Array(objects) => objects.iter().map(|obj| &obj.text).cloned().collect(),
         };
         write!(f, "{text}")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ModelProvider;
+
+    #[test]
+    fn test_provider_detection_anthropic() {
+        assert_eq!(
+            ModelProvider::from("anthropic/claude-3-opus"),
+            ModelProvider::Anthropic
+        );
+    }
+
+    #[test]
+    fn test_provider_detection_openai() {
+        assert_eq!(ModelProvider::from("openai/gpt-4"), ModelProvider::OpenAI);
+    }
+
+    #[test]
+    fn test_provider_detection_zai() {
+        assert_eq!(ModelProvider::from("z-ai/glm-4"), ModelProvider::Zai);
+    }
+
+    #[test]
+    fn test_provider_detection_kimi() {
+        assert_eq!(
+            ModelProvider::from("moonshotai/moonshot-v1"),
+            ModelProvider::Kimi
+        );
+    }
+
+    #[test]
+    fn test_provider_detection_qwen() {
+        assert_eq!(ModelProvider::from("qwen/qwen-max"), ModelProvider::Qwen);
+    }
+
+    #[test]
+    fn test_from_model_id_method() {
+        assert_eq!(
+            ModelProvider::from_model_id("anthropic/claude-3-haiku"),
+            ModelProvider::Anthropic
+        );
     }
 }

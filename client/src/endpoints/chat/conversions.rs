@@ -1,5 +1,6 @@
 use super::{
     ChatContent, ChatError, ChatFunctionCall, ChatMessage, OpenAiChatMessage, ToolCall,
+    common_types::ModelProvider,
     request_types::{ChatRequest, OpenAiChatRequest, OpenAiTool, StraicoChatRequest},
     response_types::{ChatChoice, OpenAiChatResponse, StraicoChatResponse},
 };
@@ -101,14 +102,18 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
             (trimmed.starts_with('[') && trimmed.ends_with(']')).then_some(trimmed.to_string())
         })?;
 
-    serde_json::from_str::<Vec<ChatFunctionCall>>(&raw_json)
-        .ok()
-        .map(|functions| {
+    // First try the simplified format: array of {"name", "arguments"}
+    if let Ok(functions) = serde_json::from_str::<Vec<ChatFunctionCall>>(&raw_json) {
+        return Some(
             functions
                 .into_iter()
                 .map(function_call_to_tool_call)
-                .collect()
-        })
+                .collect(),
+        );
+    }
+
+    // Fallback: try the legacy OpenAI tool_call schema for backwards compatibility
+    serde_json::from_str::<Vec<ToolCall>>(&raw_json).ok()
 }
 
 /// Generates JSON tool system message
@@ -360,22 +365,107 @@ fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     }
 }
 
+fn try_parse_qwen_tool_call(content: &str) -> Option<Vec<ToolCall>> {
+    let mut tool_calls = Vec::new();
+
+    for cap in XML_TOOL_CALL_REGEX.captures_iter(content) {
+        let inner = cap.get(1)?.as_str().trim();
+
+        // Qwen puts the whole JSON object inside <tool_call>
+        if let Ok(call_obj) = serde_json::from_str::<serde_json::Value>(inner) {
+            if let (Some(name), Some(args)) = (
+                call_obj.get("name").and_then(|n| n.as_str()),
+                call_obj.get("arguments"),
+            ) {
+                tool_calls.push(function_call_to_tool_call(ChatFunctionCall {
+                    name: name.to_string(),
+                    arguments: args.clone(),
+                }));
+            }
+        }
+    }
+
+    if tool_calls.is_empty() {
+        None
+    } else {
+        Some(tool_calls)
+    }
+}
+
+fn tools_system_message(
+    tools: &[OpenAiTool],
+    provider: ModelProvider,
+) -> Result<ChatMessage, ChatError> {
+    match provider {
+        ModelProvider::Zai => xml_tools_message(tools),
+        ModelProvider::Qwen => qwen_tools_message(tools),
+        ModelProvider::Kimi => json_tools_message(tools), // Fallback to JSON for Kimi as no system prompt provided
+        ModelProvider::Anthropic | ModelProvider::OpenAI | ModelProvider::Unknown => {
+            json_tools_message(tools)
+        }
+    }
+}
+
+pub fn convert_openai_message_with_provider(
+    message: OpenAiChatMessage,
+    provider: ModelProvider,
+) -> Result<ChatMessage, ChatError> {
+    Ok(match message {
+        OpenAiChatMessage::System { content } => ChatMessage::System { content },
+        OpenAiChatMessage::User { content } => ChatMessage::User { content },
+        OpenAiChatMessage::Assistant {
+            content,
+            tool_calls,
+        } => ChatMessage::Assistant {
+            content: if let Some(tool_calls) = tool_calls {
+                match provider {
+                    ModelProvider::Kimi => {
+                        // Kimi specific formatting
+                        let mut formatted = String::from("<|tool_calls_section_begin|>");
+                        for tool_call in &tool_calls {
+                            let args = if tool_call.function.arguments.is_string() {
+                                tool_call.function.arguments.as_str().unwrap().to_string()
+                            } else {
+                                serde_json::to_string(&tool_call.function.arguments)?
+                            };
+
+                            formatted.push_str(&format!(
+                                "<|tool_call_begin|>{}<|tool_call_argument_begin|>{}<|tool_call_end|>",
+                                tool_call.id, args
+                            ));
+                        }
+                        formatted.push_str("<|tool_calls_section_end|>");
+                        ChatContent::String(formatted)
+                    }
+                    _ => ChatContent::String(serde_json::to_string_pretty(&tool_calls)?),
+                }
+            } else {
+                content.unwrap_or(ChatContent::String("".to_string()))
+            },
+        },
+        OpenAiChatMessage::Tool { .. } => ChatMessage::User {
+            content: ChatContent::String(serde_json::to_string_pretty(&message)?),
+        },
+    })
+}
+
 impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
     type Error = ChatError;
 
     fn try_from(request: OpenAiChatRequest) -> Result<Self, Self::Error> {
+        let provider = ModelProvider::from_model_id(&request.chat_request.model);
+
         let mut messages: Vec<ChatMessage> = request
             .chat_request
             .messages
             .into_iter()
-            .map(ChatMessage::try_from)
+            .map(|msg| convert_openai_message_with_provider(msg, provider))
             .collect::<Result<_, _>>()?;
 
-        match request.tools {
-            Some(tools) if !tools.is_empty() => {
-                messages.insert(0, json_tools_message(&tools)?);
+        if let Some(tools) = &request.tools {
+            if !tools.is_empty() {
+                messages.insert(0, tools_system_message(tools, provider)?);
             }
-            _ => {}
         }
 
         Ok(ChatRequest::builder()
@@ -391,23 +481,63 @@ impl TryFrom<OpenAiChatMessage> for ChatMessage {
     type Error = ChatError;
 
     fn try_from(message: OpenAiChatMessage) -> Result<Self, Self::Error> {
-        Ok(match message {
-            OpenAiChatMessage::System { content } => ChatMessage::System { content },
-            OpenAiChatMessage::User { content } => ChatMessage::User { content },
-            OpenAiChatMessage::Assistant {
-                content,
-                tool_calls,
-            } => ChatMessage::Assistant {
-                content: if let Some(tool_calls) = tool_calls {
-                    ChatContent::String(serde_json::to_string_pretty(&tool_calls)?)
-                } else {
-                    content.unwrap_or(ChatContent::String("".to_string()))
-                },
-            },
-            OpenAiChatMessage::Tool { .. } => ChatMessage::User {
-                content: ChatContent::String(serde_json::to_string_pretty(&message)?),
-            },
-        })
+        // Default to Unknown provider when converting without explicit context
+        convert_openai_message_with_provider(message, ModelProvider::Unknown)
+    }
+}
+
+pub fn convert_message_with_provider(
+    message: ChatMessage,
+    provider: ModelProvider,
+) -> Result<OpenAiChatMessage, ChatError> {
+    match message {
+        ChatMessage::System { content } => Ok(OpenAiChatMessage::System { content }),
+        ChatMessage::User { content } => Ok(OpenAiChatMessage::User { content }),
+        ChatMessage::Assistant { content } => {
+            let content_str = content.to_string();
+
+            let final_tool_calls = match provider {
+                ModelProvider::Zai => try_parse_xml_tool_call(&content_str)
+                    .or_else(|| try_parse_json_tool_call(&content_str))
+                    .or_else(|| try_parse_pipe_tool_call(&content_str)),
+                ModelProvider::Kimi => try_parse_pipe_tool_call(&content_str)
+                    .or_else(|| try_parse_json_tool_call(&content_str)),
+                ModelProvider::Qwen => try_parse_qwen_tool_call(&content_str)
+                    .or_else(|| try_parse_json_tool_call(&content_str)),
+                ModelProvider::Anthropic | ModelProvider::OpenAI | ModelProvider::Unknown => {
+                    try_parse_json_tool_call(&content_str)
+                        .or_else(|| try_parse_xml_tool_call(&content_str))
+                        .or_else(|| try_parse_pipe_tool_call(&content_str))
+                }
+            };
+
+            if let Some(mut tool_calls) = final_tool_calls {
+                if !tool_calls.is_empty() {
+                    // Assign indices if they are missing
+                    for (i, tc) in tool_calls.iter_mut().enumerate() {
+                        if tc.index.is_none() {
+                            tc.index = Some(i);
+                        }
+                    }
+
+                    return Ok(OpenAiChatMessage::Assistant {
+                        content: None,
+                        tool_calls: Some(tool_calls),
+                    });
+                }
+            }
+
+            // If no tool calls are found, return content as is.
+            debug!(
+                "No tool call identified in assistant message. Content: {}",
+                content
+            );
+
+            Ok(OpenAiChatMessage::Assistant {
+                content: Some(content),
+                tool_calls: None,
+            })
+        }
     }
 }
 
@@ -415,44 +545,8 @@ impl TryFrom<ChatMessage> for OpenAiChatMessage {
     type Error = ChatError;
 
     fn try_from(message: ChatMessage) -> Result<Self, Self::Error> {
-        match message {
-            ChatMessage::System { content } => Ok(OpenAiChatMessage::System { content }),
-            ChatMessage::User { content } => Ok(OpenAiChatMessage::User { content }),
-            ChatMessage::Assistant { content } => {
-                let content_str = content.to_string();
-
-                let final_tool_calls = try_parse_json_tool_call(&content_str)
-                    .or_else(|| try_parse_xml_tool_call(&content_str))
-                    .or_else(|| try_parse_pipe_tool_call(&content_str));
-
-                if let Some(mut tool_calls) = final_tool_calls {
-                    if !tool_calls.is_empty() {
-                        // Assign indices if they are missing
-                        for (i, tc) in tool_calls.iter_mut().enumerate() {
-                            if tc.index.is_none() {
-                                tc.index = Some(i);
-                            }
-                        }
-
-                        return Ok(OpenAiChatMessage::Assistant {
-                            content: None,
-                            tool_calls: Some(tool_calls),
-                        });
-                    }
-                }
-
-                // If no tool calls are found, return content as is.
-                debug!(
-                    "No tool call identified in assistant message. Content: {}",
-                    content
-                );
-
-                Ok(OpenAiChatMessage::Assistant {
-                    content: Some(content),
-                    tool_calls: None,
-                })
-            }
-        }
+        // Default to Unknown provider when converting back without context
+        convert_message_with_provider(message, ModelProvider::Unknown)
     }
 }
 
@@ -460,12 +554,15 @@ impl TryFrom<StraicoChatResponse> for OpenAiChatResponse {
     type Error = ChatError;
 
     fn try_from(response: StraicoChatResponse) -> Result<Self, Self::Error> {
+        let provider = ModelProvider::from_model_id(&response.response.model);
+
         let choices = response
             .response
             .choices
             .into_iter()
             .map(|choice| {
-                let open_ai_message: OpenAiChatMessage = choice.message.try_into()?;
+                let open_ai_message: OpenAiChatMessage =
+                    convert_message_with_provider(choice.message, provider)?;
                 let finish_reason = match &open_ai_message {
                     OpenAiChatMessage::Assistant { tool_calls, .. } => {
                         if tool_calls.is_some() {
