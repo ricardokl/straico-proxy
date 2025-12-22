@@ -10,14 +10,13 @@ license = "MIT"
 # path = "src/lib.rs"
 
 [dependencies]
-futures = "0.3.31"
-reqwest = { version = "0.12.8", default-features = false, features = ["json", "multipart", "stream", "rustls-tls"] }
-serde = { version = "1.0.211", default-features = false, features = ["derive"] }
-serde_json = "1.0.132"
-thiserror = "1.0.63"
-regex = "1.11.1"
-tokio = { version = "1.0", features = ["full"] }
-once_cell = "1.21.3"
-log = "0.4.28"
-uuid = { version = "1.8.0", features = ["v4"] }
+reqwest = { workspace = true, features = ["json", "multipart", "stream", "rustls-tls"] }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+log = { workspace = true }
+uuid = { workspace = true }
+once_cell = "1.21"
 
