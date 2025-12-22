@@ -116,7 +116,7 @@ pub async fn openai_chat_completion(
         } else {
             // Use generic provider with reqwest_client
             let api_key = std::env::var(provider.env_var_name()).map_err(|_| {
-                ProxyError::BadRequest(format!(
+                ProxyError::ServerConfiguration(format!(
                     "API key not found for provider: {}. Set {} environment variable.",
                     provider,
                     provider.env_var_name()
@@ -226,6 +226,66 @@ async fn handle_non_streaming_response(
     provider: Option<Provider>,
 ) -> Result<HttpResponse, ProxyError> {
     let response = future_response.await?;
+
+    let status = response.status();
+
+    // Map upstream 429 responses into a structured rate-limit error
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        let retry_after = response
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok());
+
+        let provider_name = match provider {
+            Some(p) => p.to_string(),
+            None => "straico".to_string(),
+        };
+
+        return Err(ProxyError::RateLimited {
+            retry_after,
+            message: format!("Rate limited by {} API", provider_name),
+        });
+    }
+
+    // Map common upstream error statuses to structured ProxyError variants
+    if status == reqwest::StatusCode::UNAUTHORIZED
+        || status == reqwest::StatusCode::FORBIDDEN
+        || status == reqwest::StatusCode::NOT_FOUND
+        || status == reqwest::StatusCode::SERVICE_UNAVAILABLE
+    {
+        let provider_name = match provider {
+            Some(p) => p.to_string(),
+            None => "straico".to_string(),
+        };
+
+        let body = response.text().await.unwrap_or_default();
+
+        let base_message = format!(
+            "{} API returned {} {}",
+            provider_name,
+            status.as_u16(),
+            status.canonical_reason().unwrap_or(""),
+        );
+
+        let message = if body.is_empty() {
+            base_message
+        } else {
+            format!("{}: {}", base_message, body)
+        };
+
+        let error = if status == reqwest::StatusCode::UNAUTHORIZED {
+            ProxyError::Unauthorized(message)
+        } else if status == reqwest::StatusCode::FORBIDDEN {
+            ProxyError::Forbidden(message)
+        } else if status == reqwest::StatusCode::NOT_FOUND {
+            ProxyError::NotFound(message)
+        } else {
+            ProxyError::ServiceUnavailable(message)
+        };
+
+        return Err(error);
+    }
 
     match provider {
         Some(Provider::Straico) | None => {

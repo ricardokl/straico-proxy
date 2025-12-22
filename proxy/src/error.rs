@@ -27,6 +27,21 @@ pub enum ProxyError {
     Chat(#[from] ChatError),
     #[error("Bad request: {0}")]
     BadRequest(String),
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
+    #[error("Forbidden: {0}")]
+    Forbidden(String),
+    #[error("Not found: {0}")]
+    NotFound(String),
+    #[error("Rate limited: {message}")]
+    RateLimited {
+        retry_after: Option<u64>,
+        message: String,
+    },
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+    #[error("Server configuration error: {0}")]
+    ServerConfiguration(String),
 }
 
 impl ProxyError {
@@ -47,6 +62,26 @@ impl ProxyError {
             }
             ProxyError::Chat(e) => format!("Chat processing error: {e}"),
             ProxyError::BadRequest(e) => format!("Bad request: {e}"),
+            ProxyError::Unauthorized(msg) => format!("Unauthorized: {msg}"),
+            ProxyError::Forbidden(msg) => format!("Forbidden: {msg}"),
+            ProxyError::NotFound(msg) => format!("Not found: {msg}"),
+            ProxyError::RateLimited {
+                retry_after,
+                message,
+            } => {
+                format!(
+                    "Rate limited: {message}{}",
+                    retry_after
+                        .map(|s| format!(" (retry after {} seconds)", s))
+                        .unwrap_or_default()
+                )
+            }
+            ProxyError::ServiceUnavailable(msg) => {
+                format!("Service unavailable: {msg}")
+            }
+            ProxyError::ServerConfiguration(msg) => {
+                format!("Server configuration error: {msg}")
+            }
         };
         create_error_chunk_with_type(&message, self.error_type(), self.error_code())
     }
@@ -63,6 +98,12 @@ impl ProxyError {
             ProxyError::InvalidParameter { .. } => "invalid_request_error",
             ProxyError::Chat(_) => "invalid_request_error",
             ProxyError::BadRequest(_) => "invalid_request_error",
+            ProxyError::Unauthorized(_) => "authentication_error",
+            ProxyError::Forbidden(_) => "permission_error",
+            ProxyError::NotFound(_) => "invalid_request_error",
+            ProxyError::RateLimited { .. } => "rate_limit_error",
+            ProxyError::ServiceUnavailable(_) => "api_error",
+            ProxyError::ServerConfiguration(_) => "server_error",
         }
     }
 
@@ -78,6 +119,12 @@ impl ProxyError {
             ProxyError::InvalidParameter { .. } => Some("invalid_parameter"),
             ProxyError::Chat(_) => Some("chat_error"),
             ProxyError::BadRequest(_) => Some("bad_request"),
+            ProxyError::Unauthorized(_) => Some("unauthorized"),
+            ProxyError::Forbidden(_) => Some("forbidden"),
+            ProxyError::NotFound(_) => Some("not_found"),
+            ProxyError::RateLimited { .. } => Some("rate_limit_exceeded"),
+            ProxyError::ServiceUnavailable(_) => Some("service_unavailable"),
+            ProxyError::ServerConfiguration(_) => Some("server_configuration"),
         }
     }
 }
@@ -87,6 +134,12 @@ impl ResponseError for ProxyError {
         match self {
             ProxyError::SerdeJson(_) => StatusCode::BAD_REQUEST,
             ProxyError::BadRequest(_) => StatusCode::BAD_REQUEST,
+            ProxyError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+            ProxyError::Forbidden(_) => StatusCode::FORBIDDEN,
+            ProxyError::NotFound(_) => StatusCode::NOT_FOUND,
+            ProxyError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
+            ProxyError::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+            ProxyError::ServerConfiguration(_) => StatusCode::INTERNAL_SERVER_ERROR,
             ProxyError::ReqwestClient(e) => {
                 // Return specific status codes based on the reqwest error type
                 if e.is_timeout() {
@@ -144,6 +197,26 @@ impl ResponseError for ProxyError {
             }
             ProxyError::Chat(e) => format!("Chat processing error: {e}"),
             ProxyError::BadRequest(e) => format!("Bad request: {e}"),
+            ProxyError::Unauthorized(msg) => format!("Unauthorized: {msg}"),
+            ProxyError::Forbidden(msg) => format!("Forbidden: {msg}"),
+            ProxyError::NotFound(msg) => format!("Not found: {msg}"),
+            ProxyError::RateLimited {
+                retry_after,
+                message,
+            } => {
+                format!(
+                    "Rate limited: {message}{}",
+                    retry_after
+                        .map(|s| format!(" (retry after {} seconds)", s))
+                        .unwrap_or_default()
+                )
+            }
+            ProxyError::ServiceUnavailable(msg) => {
+                format!("Service unavailable: {msg}")
+            }
+            ProxyError::ServerConfiguration(msg) => {
+                format!("Server configuration error: {msg}")
+            }
         };
 
         HttpResponse::build(self.status_code()).json(serde_json::json!({
