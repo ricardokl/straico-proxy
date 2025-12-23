@@ -23,7 +23,7 @@ anyhow = "1.0.86"
 tokio = { version = "1.47", features = ["full"] }
 tokio-stream = "0.1.15"
 either = "1.13.0"
-async-trait = "0.1.77"
+async-trait = { workspace = true }
 
 [dev-dependencies]
 straico-proxy = { path = "." }

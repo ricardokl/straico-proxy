@@ -429,9 +429,15 @@ pub fn convert_openai_message_with_provider(
                                 serde_json::to_string(&tool_call.function.arguments)?
                             };
 
+                            let name = if tool_call.function.name.is_empty() {
+                                &tool_call.id
+                            } else {
+                                &tool_call.function.name
+                            };
+
                             formatted.push_str(&format!(
                                 "<|tool_call_begin|>{}<|tool_call_argument_begin|>{}<|tool_call_end|>",
-                                tool_call.id, args
+                                name, args
                             ));
                         }
                         formatted.push_str("<|tool_calls_section_end|>");
@@ -857,6 +863,40 @@ mod tests {
                     tool_calls[0].function.arguments["file_path"],
                     "/tmp/random_file.txt"
                 );
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
+
+    #[test]
+    fn test_kimi_tool_call_formatting() {
+        let tool_calls = vec![ToolCall {
+            id: "call_12345".to_string(),
+            tool_type: "function".to_string(),
+            function: ChatFunctionCall {
+                name: "test_func".to_string(),
+                arguments: serde_json::json!({"arg": "val"}),
+            },
+            index: None,
+        }];
+        
+        let open_ai_msg = OpenAiChatMessage::Assistant {
+            content: None,
+            tool_calls: Some(tool_calls),
+        };
+
+        // We explicitly use Kimi provider
+        let result = convert_openai_message_with_provider(open_ai_msg, ModelProvider::Kimi).unwrap();
+
+        match result {
+            ChatMessage::Assistant { content } => {
+                let content_str = content.to_string();
+                // Expectation: function name "test_func" should be used, not the ID "call_12345"
+                // The format is: <|tool_call_begin|>FUNCTION_NAME<|tool_call_argument_begin|>ARGUMENTS<|tool_call_end|>
+                let expected_part = "<|tool_call_begin|>test_func<|tool_call_argument_begin|>";
+                
+                assert!(content_str.contains(expected_part), "Content did not contain expected part '{}'. Actual content: '{}'", expected_part, content_str);
+                assert!(content_str.contains("{\"arg\":\"val\"}"));
             }
             _ => panic!("Incorrect message type"),
         }
