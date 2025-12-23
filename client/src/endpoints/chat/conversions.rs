@@ -372,8 +372,8 @@ fn try_parse_qwen_tool_call(content: &str) -> Option<Vec<ToolCall>> {
         let inner = cap.get(1)?.as_str().trim();
 
         // Qwen puts the whole JSON object inside <tool_call>
-        if let Ok(call_obj) = serde_json::from_str::<serde_json::Value>(inner) {
-            if let (Some(name), Some(args)) = (
+        if let Ok(call_obj) = serde_json::from_str::<serde_json::Value>(inner)
+            && let (Some(name), Some(args)) = (
                 call_obj.get("name").and_then(|n| n.as_str()),
                 call_obj.get("arguments"),
             ) {
@@ -382,7 +382,6 @@ fn try_parse_qwen_tool_call(content: &str) -> Option<Vec<ToolCall>> {
                     arguments: args.clone(),
                 }));
             }
-        }
     }
 
     if tool_calls.is_empty() {
@@ -468,11 +467,10 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
             .map(|msg| convert_openai_message_with_provider(msg, provider))
             .collect::<Result<_, _>>()?;
 
-        if let Some(tools) = &request.tools {
-            if !tools.is_empty() {
+        if let Some(tools) = &request.tools
+            && !tools.is_empty() {
                 messages.insert(0, tools_system_message(tools, provider)?);
             }
-        }
 
         Ok(ChatRequest::builder()
             .model(&request.chat_request.model)
@@ -517,8 +515,8 @@ pub fn convert_message_with_provider(
                 }
             };
 
-            if let Some(mut tool_calls) = final_tool_calls {
-                if !tool_calls.is_empty() {
+            if let Some(mut tool_calls) = final_tool_calls
+                && !tool_calls.is_empty() {
                     // Assign indices if they are missing
                     for (i, tc) in tool_calls.iter_mut().enumerate() {
                         if tc.index.is_none() {
@@ -531,7 +529,6 @@ pub fn convert_message_with_provider(
                         tool_calls: Some(tool_calls),
                     });
                 }
-            }
 
             // If no tool calls are found, return content as is.
             debug!(
