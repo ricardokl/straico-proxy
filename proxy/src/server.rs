@@ -129,17 +129,15 @@ pub async fn openai_chat_completion(
             handle_chat_completion_async(&provider, &openai_request, model, stream).await
         }
         Provider::Generic(gen_type) => {
-            let provider = GenericProvider {
-                provider: gen_type,
-                client: router_client
-                    .as_ref()
-                    .ok_or_else(|| {
-                        ProxyError::ServerConfiguration(
-                            "Router client is not configured for generic provider".to_string(),
-                        )
-                    })?
-                    .clone(),
-            };
+            let client = router_client
+                .as_ref()
+                .ok_or_else(|| {
+                    ProxyError::ServerConfiguration(
+                        "Router client is not configured for generic provider".to_string(),
+                    )
+                })?
+                .clone();
+            let provider = GenericProvider::new(gen_type, client)?;
             handle_chat_completion_async(&provider, &openai_request, model, stream).await
         }
     }

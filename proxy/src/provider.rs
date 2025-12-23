@@ -116,6 +116,29 @@ impl ChatProvider for StraicoProvider {
 pub struct GenericProvider {
     pub provider: GenericProviderType,
     pub client: reqwest::Client,
+    pub api_key: String,
+}
+
+impl GenericProvider {
+    pub fn new(
+        provider: GenericProviderType,
+        client: reqwest::Client,
+    ) -> Result<Self, ProxyError> {
+        let provider_kind = Provider::Generic(provider);
+        let api_key = std::env::var(provider_kind.env_var_name()).map_err(|_| {
+            ProxyError::ServerConfiguration(format!(
+                "API key not found for provider: {}. Set {} environment variable.",
+                provider_kind,
+                provider_kind.env_var_name()
+            ))
+        })?;
+
+        Ok(Self {
+            provider,
+            client,
+            api_key,
+        })
+    }
 }
 
 impl ChatProvider for GenericProvider {
@@ -129,18 +152,11 @@ impl ChatProvider for GenericProvider {
     ) -> Result<impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static, ProxyError>
     {
         let provider = self.provider_kind();
-        let api_key = std::env::var(provider.env_var_name()).map_err(|_| {
-            ProxyError::ServerConfiguration(format!(
-                "API key not found for provider: {}. Set {} environment variable.",
-                provider,
-                provider.env_var_name()
-            ))
-        })?;
 
         Ok(self
             .client
             .post(provider.base_url())
-            .bearer_auth(api_key)
+            .bearer_auth(&self.api_key)
             .json(request)
             .send())
     }
