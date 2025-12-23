@@ -213,11 +213,15 @@ fn create_straico_streaming_response(
 
     let straico_stream = remote_handle
         .and_then(reqwest::Response::json::<StraicoChatResponse>)
-        .map_ok(|x| CompletionStream::try_from(x).unwrap())
+        .map(|result| {
+            result
+                .map_err(ProxyError::from)
+                .and_then(CompletionStream::try_from)
+        })
         .map_ok(SseChunk::from)
         .map(|result| match result {
             Ok(chunk) => chunk.try_into(),
-            Err(e) => SseChunk::from(ProxyError::from(e)).try_into(),
+            Err(e) => SseChunk::from(e).try_into(),
         })
         .into_stream();
 

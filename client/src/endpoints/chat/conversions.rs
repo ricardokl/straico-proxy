@@ -376,12 +376,13 @@ fn try_parse_qwen_tool_call(content: &str) -> Option<Vec<ToolCall>> {
             && let (Some(name), Some(args)) = (
                 call_obj.get("name").and_then(|n| n.as_str()),
                 call_obj.get("arguments"),
-            ) {
-                tool_calls.push(function_call_to_tool_call(ChatFunctionCall {
-                    name: name.to_string(),
-                    arguments: args.clone(),
-                }));
-            }
+            )
+        {
+            tool_calls.push(function_call_to_tool_call(ChatFunctionCall {
+                name: name.to_string(),
+                arguments: args.clone(),
+            }));
+        }
     }
 
     if tool_calls.is_empty() {
@@ -468,9 +469,10 @@ impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
             .collect::<Result<_, _>>()?;
 
         if let Some(tools) = &request.tools
-            && !tools.is_empty() {
-                messages.insert(0, tools_system_message(tools, provider)?);
-            }
+            && !tools.is_empty()
+        {
+            messages.insert(0, tools_system_message(tools, provider)?);
+        }
 
         Ok(ChatRequest::builder()
             .model(&request.chat_request.model)
@@ -516,19 +518,20 @@ pub fn convert_message_with_provider(
             };
 
             if let Some(mut tool_calls) = final_tool_calls
-                && !tool_calls.is_empty() {
-                    // Assign indices if they are missing
-                    for (i, tc) in tool_calls.iter_mut().enumerate() {
-                        if tc.index.is_none() {
-                            tc.index = Some(i);
-                        }
+                && !tool_calls.is_empty()
+            {
+                // Assign indices if they are missing
+                for (i, tc) in tool_calls.iter_mut().enumerate() {
+                    if tc.index.is_none() {
+                        tc.index = Some(i);
                     }
-
-                    return Ok(OpenAiChatMessage::Assistant {
-                        content: None,
-                        tool_calls: Some(tool_calls),
-                    });
                 }
+
+                return Ok(OpenAiChatMessage::Assistant {
+                    content: None,
+                    tool_calls: Some(tool_calls),
+                });
+            }
 
             // If no tool calls are found, return content as is.
             debug!(
