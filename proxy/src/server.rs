@@ -1,17 +1,13 @@
 use crate::{
     error::ProxyError,
+    provider::{ChatProvider, GenericProvider, StraicoProvider},
     router::Provider,
-    streaming::{CompletionStream, SseChunk},
     types::OpenAiChatRequest,
 };
 use actix_web::{get, post, web, HttpResponse};
-use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
+use futures::TryStreamExt;
 use log::{debug, warn};
-use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::client::StraicoClient;
-use straico_client::{OpenAiChatResponse, StraicoChatRequest, StraicoChatResponse};
-use tokio::time::Duration;
-use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -78,6 +74,26 @@ pub async fn model_handler(
     Ok(response_builder.streaming(body_stream))
 }
 
+/// Generic handler for chat completions that works with any provider implementing ChatProvider.
+/// The compiler will monomorphize this function for each concrete provider type, generating
+/// specialized code with zero abstraction overhead.
+async fn handle_chat_completion_async<P: ChatProvider>(
+    provider: &P,
+    openai_request: &OpenAiChatRequest,
+    model: String,
+    stream: bool,
+) -> Result<HttpResponse, ProxyError> {
+    let response_future = provider.send_request(openai_request)?;
+
+    if stream {
+        Ok(provider.create_streaming_response(&model, response_future))
+    } else {
+        let response = response_future.await?;
+        let json = provider.parse_non_streaming(response).await?;
+        Ok(HttpResponse::Ok().json(json))
+    }
+}
+
 #[post("/v1/chat/completions")]
 pub async fn openai_chat_completion(
     req: web::Json<OpenAiChatRequest>,
@@ -87,215 +103,44 @@ pub async fn openai_chat_completion(
     debug!("{}", serde_json::to_string_pretty(&openai_request.clone())?);
     let model = openai_request.chat_request.model.clone();
     let stream = openai_request.stream;
+
     let AppState {
         ref client,
         ref key,
         ref router_client,
     } = &*data.into_inner();
 
-    // Determine the provider and create the appropriate future
-    if let Some(ref router_client) = router_client {
-        // Router mode is active
-        let provider = Provider::from_model(&model)?;
-
-        if provider == Provider::Straico {
-            // Use Straico client even in router mode
-            let chat_request = StraicoChatRequest::try_from(openai_request)?;
-            let response = client
-                .clone()
-                .chat()
-                .bearer_auth(key)
-                .json(chat_request)
-                .send();
-
-            if stream {
-                Ok(create_streaming_response(&model, response, Some(provider)))
-            } else {
-                handle_non_streaming_response(response, Some(provider)).await
-            }
-        } else {
-            // Use generic provider with reqwest_client
-            let api_key = std::env::var(provider.env_var_name()).map_err(|_| {
-                ProxyError::ServerConfiguration(format!(
-                    "API key not found for provider: {}. Set {} environment variable.",
-                    provider,
-                    provider.env_var_name()
-                ))
-            })?;
-
-            let response = router_client
-                .post(provider.base_url())
-                .bearer_auth(api_key)
-                .json(&openai_request)
-                .send();
-
-            if stream {
-                Ok(create_streaming_response(&model, response, Some(provider)))
-            } else {
-                handle_non_streaming_response(response, Some(provider)).await
-            }
-        }
+    // Determine provider type based on model and router configuration
+    let provider_type = if router_client.is_some() {
+        // Router mode is active - resolve based on model prefix
+        Provider::from_model(&model)?
     } else {
-        // Normal mode - always use Straico
-        let chat_request = StraicoChatRequest::try_from(openai_request)?;
-        let response = client
-            .clone()
-            .chat()
-            .bearer_auth(key)
-            .json(chat_request)
-            .send();
+        // Normal mode - always use Straico regardless of model prefix
+        Provider::Straico
+    };
 
-        if stream {
-            Ok(create_streaming_response(&model, response, None))
-        } else {
-            handle_non_streaming_response(response, None).await
+    // Dispatch to the appropriate monomorphized function based on provider type
+    match provider_type {
+        Provider::Straico => {
+            let provider = StraicoProvider {
+                client: client.clone(),
+                key: key.clone(),
+            };
+            handle_chat_completion_async(&provider, &openai_request, model, stream).await
         }
-    }
-}
-
-/// Safely gets the current Unix timestamp, with fallback for edge cases
-fn get_current_timestamp() -> u64 {
-    match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_secs(),
-        Err(_) => 1704067200, // Fallback to 2024-01-01
-    }
-}
-
-fn create_streaming_response(
-    model: &str,
-    future_response: impl future::Future<Output = Result<reqwest::Response, reqwest::Error>>
-        + Send
-        + 'static,
-    provider: Option<Provider>,
-) -> HttpResponse {
-    match provider {
-        Some(Provider::Straico) | None => {
-            let id = format!("chatcmpl-{}", Uuid::new_v4());
-            let created = get_current_timestamp();
-
-            let initial_chunk = stream::once(future::ready(
-                SseChunk::from(CompletionStream::initial_chunk(model, &id, created)).try_into(),
-            ));
-
-            let (remote, remote_handle) = future_response.remote_handle();
-
-            let heartbeat = tokio_stream::StreamExt::throttle(
-                stream::repeat_with(|| {
-                    SseChunk::from(CompletionStream::heartbeat_chunk()).try_into()
-                }),
-                Duration::from_secs(3),
-            )
-            .take_until(remote);
-
-            let straico_stream = remote_handle
-                .and_then(reqwest::Response::json::<StraicoChatResponse>)
-                .map_ok(|x| CompletionStream::try_from(x).unwrap())
-                .map_ok(SseChunk::from)
-                .map(|result| match result {
-                    Ok(chunk) => chunk.try_into(),
-                    Err(e) => SseChunk::from(ProxyError::from(e)).try_into(),
-                })
-                .into_stream();
-
-            let done = stream::once(future::ready(
-                SseChunk::from("[DONE]".to_string()).try_into(),
-            ));
-
-            let response_stream = initial_chunk
-                .chain(heartbeat)
-                .chain(straico_stream)
-                .chain(done);
-
-            HttpResponse::Ok()
-                .content_type("text/event-stream")
-                .streaming(response_stream)
-        }
-        _ => {
-            let stream = future_response
-                .map_ok(|resp| resp.bytes_stream().map_err(ProxyError::from))
-                .map_err(ProxyError::from)
-                .try_flatten_stream();
-
-            HttpResponse::Ok().streaming(stream)
-        }
-    }
-}
-
-async fn handle_non_streaming_response(
-    future_response: impl future::Future<Output = Result<reqwest::Response, reqwest::Error>>,
-    provider: Option<Provider>,
-) -> Result<HttpResponse, ProxyError> {
-    let response = future_response.await?;
-
-    let status = response.status();
-
-    // Map upstream 429 responses into a structured rate-limit error
-    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-        let retry_after = response
-            .headers()
-            .get("retry-after")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok());
-
-        let provider_name = match provider {
-            Some(p) => p.to_string(),
-            None => "straico".to_string(),
-        };
-
-        return Err(ProxyError::RateLimited {
-            retry_after,
-            message: format!("Rate limited by {} API", provider_name),
-        });
-    }
-
-    // Map common upstream error statuses to structured ProxyError variants
-    if status == reqwest::StatusCode::UNAUTHORIZED
-        || status == reqwest::StatusCode::FORBIDDEN
-        || status == reqwest::StatusCode::NOT_FOUND
-        || status == reqwest::StatusCode::SERVICE_UNAVAILABLE
-    {
-        let provider_name = match provider {
-            Some(p) => p.to_string(),
-            None => "straico".to_string(),
-        };
-
-        let body = response.text().await.unwrap_or_default();
-
-        let base_message = format!(
-            "{} API returned {} {}",
-            provider_name,
-            status.as_u16(),
-            status.canonical_reason().unwrap_or(""),
-        );
-
-        let message = if body.is_empty() {
-            base_message
-        } else {
-            format!("{}: {}", base_message, body)
-        };
-
-        let error = if status == reqwest::StatusCode::UNAUTHORIZED {
-            ProxyError::Unauthorized(message)
-        } else if status == reqwest::StatusCode::FORBIDDEN {
-            ProxyError::Forbidden(message)
-        } else if status == reqwest::StatusCode::NOT_FOUND {
-            ProxyError::NotFound(message)
-        } else {
-            ProxyError::ServiceUnavailable(message)
-        };
-
-        return Err(error);
-    }
-
-    match provider {
-        Some(Provider::Straico) | None => {
-            let straico_response: StraicoChatResponse = response.json().await?;
-            let openai_response = OpenAiChatResponse::try_from(straico_response)?;
-            Ok(HttpResponse::Ok().json(openai_response))
-        }
-        _ => {
-            let json_response: serde_json::Value = response.json().await?;
-            Ok(HttpResponse::Ok().json(json_response))
+        Provider::Generic(gen_type) => {
+            let provider = GenericProvider {
+                provider: gen_type,
+                client: router_client
+                    .as_ref()
+                    .ok_or_else(|| {
+                        ProxyError::ServerConfiguration(
+                            "Router client is not configured for generic provider".to_string(),
+                        )
+                    })?
+                    .clone(),
+            };
+            handle_chat_completion_async(&provider, &openai_request, model, stream).await
         }
     }
 }
