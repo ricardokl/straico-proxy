@@ -1,0 +1,21 @@
+reviews:
+  profile: assertive
+  tools:
+    clippy:
+      enabled: true
+      # We enable clippy to catch unnecessary Box, Vec, or String usage
+      flags: ["-D", "clippy::perf", "-D", "clippy::pedantic"]
+
+  path_filters:
+    - "!target/**"
+    - "!.crush/**"
+    - "!.git/**"
+    - "!.cargo/**"
+
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        - Minimize heap allocations. Prefer stack-allocated arrays, slices, or Cow where possible.
+        - The Straico provider does not offer streaming.
+        - You must ensure a Future is used to generate heartbeats while waiting for the response. 
+        - This must be implemented using the 'take_until' method to stop heartbeats once the provider future resolves.
