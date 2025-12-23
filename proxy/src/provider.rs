@@ -246,7 +246,7 @@ fn create_generic_streaming_response(
         .map_err(ProxyError::from)
         .try_flatten_stream();
 
-    HttpResponse::Ok().streaming(stream)
+    HttpResponse::Ok().content_type("text/event-stream").streaming(stream)
 }
 
 async fn map_common_non_streaming_errors(
