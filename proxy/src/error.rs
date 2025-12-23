@@ -42,6 +42,8 @@ pub enum ProxyError {
     ServiceUnavailable(String),
     #[error("Server configuration error: {0}")]
     ServerConfiguration(String),
+    #[error("Upstream error: {1}")]
+    UpstreamError(u16, String),
 }
 
 impl ProxyError {
@@ -82,6 +84,9 @@ impl ProxyError {
             ProxyError::ServerConfiguration(msg) => {
                 format!("Server configuration error: {msg}")
             }
+            ProxyError::UpstreamError(_, msg) => {
+                format!("Upstream error: {msg}")
+            }
         };
         create_error_chunk_with_type(&message, self.error_type(), self.error_code())
     }
@@ -104,6 +109,7 @@ impl ProxyError {
             ProxyError::RateLimited { .. } => "rate_limit_error",
             ProxyError::ServiceUnavailable(_) => "api_error",
             ProxyError::ServerConfiguration(_) => "server_error",
+            ProxyError::UpstreamError(_, _) => "api_error",
         }
     }
 
@@ -125,6 +131,7 @@ impl ProxyError {
             ProxyError::RateLimited { .. } => Some("rate_limit_exceeded"),
             ProxyError::ServiceUnavailable(_) => Some("service_unavailable"),
             ProxyError::ServerConfiguration(_) => Some("server_configuration"),
+            ProxyError::UpstreamError(_, _) => Some("upstream_error"),
         }
     }
 }
@@ -140,6 +147,9 @@ impl ResponseError for ProxyError {
             ProxyError::RateLimited { .. } => StatusCode::TOO_MANY_REQUESTS,
             ProxyError::ServiceUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
             ProxyError::ServerConfiguration(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            ProxyError::UpstreamError(status, _) => {
+                StatusCode::from_u16(*status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+            }
             ProxyError::ReqwestClient(e) => {
                 // Return specific status codes based on the reqwest error type
                 if e.is_timeout() {
@@ -216,6 +226,9 @@ impl ResponseError for ProxyError {
             }
             ProxyError::ServerConfiguration(msg) => {
                 format!("Server configuration error: {msg}")
+            }
+            ProxyError::UpstreamError(_, msg) => {
+                format!("Upstream error: {msg}")
             }
         };
 

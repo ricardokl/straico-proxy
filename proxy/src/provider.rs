@@ -120,10 +120,7 @@ pub struct GenericProvider {
 }
 
 impl GenericProvider {
-    pub fn new(
-        provider: GenericProviderType,
-        client: reqwest::Client,
-    ) -> Result<Self, ProxyError> {
+    pub fn new(provider: GenericProviderType, client: reqwest::Client) -> Result<Self, ProxyError> {
         let provider_kind = Provider::Generic(provider);
         let api_key = std::env::var(provider_kind.env_var_name()).map_err(|_| {
             ProxyError::ServerConfiguration(format!(
@@ -246,7 +243,9 @@ fn create_generic_streaming_response(
         .map_err(ProxyError::from)
         .try_flatten_stream();
 
-    HttpResponse::Ok().content_type("text/event-stream").streaming(stream)
+    HttpResponse::Ok()
+        .content_type("text/event-stream")
+        .streaming(stream)
 }
 
 async fn map_common_non_streaming_errors(
@@ -255,6 +254,10 @@ async fn map_common_non_streaming_errors(
 ) -> Result<reqwest::Response, ProxyError> {
     let status = response.status();
 
+    let provider_name = provider
+        .map(|p| p.to_string())
+        .unwrap_or_else(|| "straico".to_string());
+
     // Map upstream 429 responses into a structured rate-limit error
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
         let retry_after = response
@@ -262,11 +265,6 @@ async fn map_common_non_streaming_errors(
             .get("retry-after")
             .and_then(|v| v.to_str().ok())
             .and_then(|s| s.parse::<u64>().ok());
-
-        let provider_name = match provider {
-            Some(p) => p.to_string(),
-            None => "straico".to_string(),
-        };
 
         return Err(ProxyError::RateLimited {
             retry_after,
@@ -280,11 +278,6 @@ async fn map_common_non_streaming_errors(
         || status == reqwest::StatusCode::NOT_FOUND
         || status == reqwest::StatusCode::SERVICE_UNAVAILABLE
     {
-        let provider_name = match provider {
-            Some(p) => p.to_string(),
-            None => "straico".to_string(),
-        };
-
         let body = response.text().await.unwrap_or_default();
 
         let base_message = format!(
@@ -311,6 +304,26 @@ async fn map_common_non_streaming_errors(
         };
 
         return Err(error);
+    }
+
+    // Catch-all for other 4xx/5xx errors
+    if status.is_client_error() || status.is_server_error() {
+        let body = response.text().await.unwrap_or_default();
+
+        let base_message = format!(
+            "{} API returned {} {}",
+            provider_name,
+            status.as_u16(),
+            status.canonical_reason().unwrap_or(""),
+        );
+
+        let message = if body.is_empty() {
+            base_message
+        } else {
+            format!("{}: {}", base_message, body)
+        };
+
+        return Err(ProxyError::UpstreamError(status.as_u16(), message));
     }
 
     Ok(response)

@@ -879,14 +879,15 @@ mod tests {
             },
             index: None,
         }];
-        
+
         let open_ai_msg = OpenAiChatMessage::Assistant {
             content: None,
             tool_calls: Some(tool_calls),
         };
 
         // We explicitly use Kimi provider
-        let result = convert_openai_message_with_provider(open_ai_msg, ModelProvider::Kimi).unwrap();
+        let result =
+            convert_openai_message_with_provider(open_ai_msg, ModelProvider::Kimi).unwrap();
 
         match result {
             ChatMessage::Assistant { content } => {
@@ -894,8 +895,13 @@ mod tests {
                 // Expectation: function name "test_func" should be used, not the ID "call_12345"
                 // The format is: <|tool_call_begin|>FUNCTION_NAME<|tool_call_argument_begin|>ARGUMENTS<|tool_call_end|>
                 let expected_part = "<|tool_call_begin|>test_func<|tool_call_argument_begin|>";
-                
-                assert!(content_str.contains(expected_part), "Content did not contain expected part '{}'. Actual content: '{}'", expected_part, content_str);
+
+                assert!(
+                    content_str.contains(expected_part),
+                    "Content did not contain expected part '{}'. Actual content: '{}'",
+                    expected_part,
+                    content_str
+                );
                 assert!(content_str.contains("{\"arg\":\"val\"}"));
             }
             _ => panic!("Incorrect message type"),
