@@ -1,3 +1,4 @@
+use crate::streaming::HeartbeatChar;
 use crate::{
     error::ProxyError,
     provider::{ChatProvider, GenericProvider, StraicoProvider},
@@ -14,6 +15,7 @@ pub struct AppState {
     pub client: StraicoClient,
     pub key: String,
     pub router_client: Option<reqwest::Client>,
+    pub heartbeat_char: HeartbeatChar,
 }
 
 #[get("/v1/models")]
@@ -108,6 +110,7 @@ pub async fn openai_chat_completion(
         ref client,
         ref key,
         ref router_client,
+        ref heartbeat_char,
     } = &*data.into_inner();
 
     // Determine provider type based on model and router configuration
@@ -125,6 +128,7 @@ pub async fn openai_chat_completion(
             let provider = StraicoProvider {
                 client: client.clone(),
                 key: key.clone(),
+                heartbeat_char: heartbeat_char.clone(),
             };
             handle_chat_completion_async(&provider, &openai_request, model, stream).await
         }

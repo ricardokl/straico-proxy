@@ -86,6 +86,7 @@ async fn main() -> anyhow::Result<()> {
             client: client.clone(),
             router_client: cli.router.then(reqwest::Client::new),
             key: api_key.clone(),
+            heartbeat_char: cli.heartbeat_char.clone(),
         };
 
         let app = App::new().app_data(web::Data::new(app_state));

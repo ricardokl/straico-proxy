@@ -2,6 +2,35 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+#[derive(Clone, Debug, clap::ValueEnum)]
+pub enum HeartbeatChar {
+    /// Empty heartbeat (current behavior, no content)
+    Empty,
+    /// Zero-width space (\u200b)
+    Zwsp,
+    /// Zero-width non-joiner (\u200c)
+    Zwnj,
+    /// Word joiner (\u2060)
+    Wj,
+}
+
+impl HeartbeatChar {
+    pub fn as_str(&self) -> &str {
+        match self {
+            HeartbeatChar::Empty => "",
+            HeartbeatChar::Zwsp => "\u{200b}",
+            HeartbeatChar::Zwnj => "\u{200c}",
+            HeartbeatChar::Wj => "\u{2060}",
+        }
+    }
+}
+
+impl Default for HeartbeatChar {
+    fn default() -> Self {
+        HeartbeatChar::Empty
+    }
+}
+
 use straico_client::endpoints::chat::common_types::{OpenAiChatMessage, ToolCall};
 use straico_client::endpoints::chat::response_types::{ChatChoice, OpenAiChatResponse, Usage};
 use straico_client::StraicoChatResponse;
@@ -125,13 +154,20 @@ impl CompletionStream {
         }
     }
 
-    /// Creates a heartbeat SSE chunk with empty delta for keep-alive
-    pub fn heartbeat_chunk() -> Self {
+    /// Creates a heartbeat SSE chunk with configurable content for keep-alive
+    pub fn heartbeat_chunk(heartbeat_char: &HeartbeatChar) -> Self {
+        let content = heartbeat_char.as_str();
+        let content_option = if content.is_empty() {
+            None
+        } else {
+            Some(content.into())
+        };
+
         Self {
             choices: vec![ChoiceStream {
                 index: 0,
                 delta: Delta {
-                    content: None,
+                    content: content_option,
                     ..Default::default()
                 },
                 finish_reason: None,
@@ -370,20 +406,36 @@ mod tests {
 
     #[test]
     fn test_completion_stream_heartbeat_chunk() {
-        let chunk = CompletionStream::heartbeat_chunk();
-
-        assert_eq!(chunk.object.as_ref(), "chat.completion.chunk");
-        assert_eq!(chunk.choices.len(), 1);
-        assert_eq!(chunk.choices[0].index, 0);
-        assert!(chunk.choices[0].delta.role.is_none());
+        // Test Empty variant
+        let chunk = CompletionStream::heartbeat_chunk(&HeartbeatChar::Empty);
         assert!(chunk.choices[0].delta.content.is_none());
-        assert!(chunk.choices[0].finish_reason.is_none());
+
+        // Test Zwsp variant
+        let chunk = CompletionStream::heartbeat_chunk(&HeartbeatChar::Zwsp);
+        assert_eq!(
+            chunk.choices[0].delta.content.as_ref().unwrap().as_ref(),
+            "\u{200b}"
+        );
+
+        // Test Zwnj variant
+        let chunk = CompletionStream::heartbeat_chunk(&HeartbeatChar::Zwnj);
+        assert_eq!(
+            chunk.choices[0].delta.content.as_ref().unwrap().as_ref(),
+            "\u{200c}"
+        );
+
+        // Test Wj variant
+        let chunk = CompletionStream::heartbeat_chunk(&HeartbeatChar::Wj);
+        assert_eq!(
+            chunk.choices[0].delta.content.as_ref().unwrap().as_ref(),
+            "\u{2060}"
+        );
     }
 
     #[test]
     fn test_sse_chunk_enum_serialization() {
         // Test Data variant
-        let data_chunk = SseChunk::Data(CompletionStream::heartbeat_chunk());
+        let data_chunk = SseChunk::Data(CompletionStream::heartbeat_chunk(&HeartbeatChar::Empty));
         let json = serde_json::to_string(&data_chunk).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["object"], "chat.completion.chunk");

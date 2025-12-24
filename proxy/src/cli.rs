@@ -1,5 +1,5 @@
+use crate::streaming::HeartbeatChar;
 use clap::Parser;
-
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "straico-proxy",
@@ -30,4 +30,8 @@ pub struct Cli {
     /// Enable router mode
     #[arg(long)]
     pub router: bool,
+
+    /// Heartbeat character type for streaming responses
+    #[arg(long, value_enum, default_value = "empty")]
+    pub heartbeat_char: HeartbeatChar,
 }

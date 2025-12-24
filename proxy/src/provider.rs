@@ -1,7 +1,7 @@
 use crate::{
     error::ProxyError,
     router::{GenericProviderType, Provider},
-    streaming::{CompletionStream, SseChunk},
+    streaming::{CompletionStream, HeartbeatChar, SseChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
 use actix_web::HttpResponse;
@@ -46,6 +46,7 @@ pub trait ChatProvider {
 pub struct StraicoProvider {
     pub client: StraicoClient,
     pub key: String,
+    pub heartbeat_char: HeartbeatChar,
 }
 
 impl ChatProvider for StraicoProvider {
@@ -107,7 +108,7 @@ impl ChatProvider for StraicoProvider {
         model: &str,
         response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
     ) -> HttpResponse {
-        create_straico_streaming_response(model, response_future)
+        create_straico_streaming_response(model, response_future, self.heartbeat_char.clone())
     }
 }
 
@@ -195,6 +196,7 @@ fn get_current_timestamp() -> u64 {
 fn create_straico_streaming_response(
     model: &str,
     future_response: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
+    heartbeat_char: HeartbeatChar,
 ) -> HttpResponse {
     let id = format!("chatcmpl-{}", Uuid::new_v4());
     let created = get_current_timestamp();
@@ -206,7 +208,9 @@ fn create_straico_streaming_response(
     let (remote, remote_handle) = future_response.remote_handle();
 
     let heartbeat = tokio_stream::StreamExt::throttle(
-        stream::repeat_with(|| SseChunk::from(CompletionStream::heartbeat_chunk()).try_into()),
+        stream::repeat_with(move || {
+            SseChunk::from(CompletionStream::heartbeat_chunk(&heartbeat_char)).try_into()
+        }),
         Duration::from_secs(3),
     )
     .take_until(remote);
