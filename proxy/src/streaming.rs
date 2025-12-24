@@ -3,8 +3,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 #[derive(Clone, Debug, clap::ValueEnum)]
+#[derive(Default)]
 pub enum HeartbeatChar {
     /// Empty heartbeat (current behavior, no content)
+    #[default]
     Empty,
     /// Zero-width space (\u200b)
     Zwsp,
@@ -25,11 +27,6 @@ impl HeartbeatChar {
     }
 }
 
-impl Default for HeartbeatChar {
-    fn default() -> Self {
-        HeartbeatChar::Empty
-    }
-}
 
 use straico_client::endpoints::chat::common_types::{OpenAiChatMessage, ToolCall};
 use straico_client::endpoints::chat::response_types::{ChatChoice, OpenAiChatResponse, Usage};
