@@ -85,6 +85,7 @@ pub enum ModelProvider {
     Zai,
     MoonshotAI,
     Qwen,
+    Google,
     Unknown,
 }
 
@@ -100,6 +101,7 @@ impl From<&str> for ModelProvider {
             // Kimi models
             "moonshotai" => ModelProvider::MoonshotAI,
             "qwen" => ModelProvider::Qwen,
+            "google" => ModelProvider::Google,
             _ => ModelProvider::Unknown,
         }
     }
@@ -257,6 +259,14 @@ mod tests {
     #[test]
     fn test_provider_detection_qwen() {
         assert_eq!(ModelProvider::from("qwen/qwen-max"), ModelProvider::Qwen);
+    }
+
+    #[test]
+    fn test_provider_detection_google() {
+        assert_eq!(
+            ModelProvider::from("google/gemini-pro"),
+            ModelProvider::Google
+        );
     }
 
     #[test]

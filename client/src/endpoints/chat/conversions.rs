@@ -546,11 +546,12 @@ pub fn convert_message_with_provider(
                     .or_else(|| try_parse_json_tool_call(&content_str)),
                 ModelProvider::Qwen => try_parse_xml_tool_call(&content_str)
                     .or_else(|| try_parse_json_tool_call(&content_str)),
-                ModelProvider::Anthropic | ModelProvider::OpenAI | ModelProvider::Unknown => {
-                    try_parse_json_tool_call(&content_str)
-                        .or_else(|| try_parse_xml_tool_call(&content_str))
-                        .or_else(|| try_parse_moonshot_tool_call(&content_str))
-                }
+                ModelProvider::Anthropic
+                | ModelProvider::Google
+                | ModelProvider::OpenAI
+                | ModelProvider::Unknown => try_parse_json_tool_call(&content_str)
+                    .or_else(|| try_parse_xml_tool_call(&content_str))
+                    .or_else(|| try_parse_moonshot_tool_call(&content_str)),
             };
 
             if let Some(mut tool_calls) = final_tool_calls
