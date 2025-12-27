@@ -15,60 +15,189 @@ static XML_TOOL_CALL_REGEX: Lazy<Regex> =
 static XML_SINGLE_TOOL_CALL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<tool_call>(.*?)</tool_call>").unwrap());
 
-static XML_ARG_REGEX: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?s)<arg_key>(.*?)</arg_value>").unwrap());
+static XML_ARG_KEY_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)<arg_key>(.*?)</arg_key>").unwrap());
+
+static XML_ARG_VALUE_REGEX: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"(?s)<arg_value>(.*?)</arg_value>").unwrap());
 
 static PIPE_TOOL_CALL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<\|tool_call_begin\|>(.*?)<\|tool_call_end\|>").unwrap());
 
-/// Unified template function for generating tool system messages across different formats.
-/// This function consolidates common instruction text while allowing format-specific customization.
-///
-/// # Parameters
-/// - `function_signatures` - The formatted function signatures (JSON array, XML list, or Qwen XML)
-/// - `wrapper_syntax` - The exact wrapper syntax (e.g., "<tool_calls>...</tool_calls>" or "<tool_call>...</tool_call>")
-/// - `call_structure` - Description of the structure within the wrapper
-/// - `single_example` - Complete example of a single tool call
-/// - `multiple_example` - Complete example of multiple tool calls
-fn build_tool_system_message(
-    function_signatures: &str,
-    wrapper_syntax: &str,
-    call_structure: &str,
-    single_example: &str,
-    multiple_example: &str,
-) -> String {
-    format!(
-        r###"
-# Tools
+/// Shared preamble for all providers, standardizing the function definitions section.
+fn build_tools_preamble(
+    functions: &[&crate::endpoints::chat::request_types::OpenAiFunction],
+) -> Result<String, ChatError> {
+    Ok(format!(
+        "You are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{}\n</tools>",
+        serde_json::to_string_pretty(&functions)?
+    ))
+}
 
-You may call one or more functions to assist with the user query.
-
-{}
-
-# Tool Call Format
+fn zai_calling_instructions() -> String {
+    r#"# Tool Call Format
 
 ⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
 
-{}
+<tool_call>{function_name}
+<arg_key>{parameter_name}</arg_key>
+<arg_value>{parameter_value}</arg_value>
+</tool_call>
 
-{}
+Each tool call must be wrapped in <tool_call> tags with the function name immediately after the opening tag. Parameters are specified using <arg_key> and <arg_value> pairs.
 
 ❌ DO NOT respond with tool calls in any other format. DO NOT omit the wrapper.
 
 ## Examples
 
-The following examples demonstrate the REQUIRED format. Your responses must match this structure exactly.
-
 Example of a single tool call:
 
-{}
+<tool_call>get_weather
+<arg_key>location</arg_key>
+<arg_value>Boston, MA</arg_value>
+</tool_call>
 
 Example of multiple tool calls:
 
+<tool_call>search_web
+<arg_key>query</arg_key>
+<arg_value>latest AI news</arg_value>
+</tool_call>
+<tool_call>summarize_text
+<arg_key>text</arg_key>
+<arg_value>A long text to be summarized...</arg_value>
+</tool_call>"#.to_string()
+}
+
+fn qwen_calling_instructions() -> String {
+    r#"# Tool Call Format
+
+⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
+
+<tool_calls>
+[
+  {"name": <function-name>, "arguments": <args-json-object>},
+  ...
+]
+</tool_calls>
+
+One or more tool calls in a JSON array wrapped in <tool_calls> XML tags. Each JSON object must contain "name" and "arguments" fields.
+
+❌ DO NOT respond with tool calls in any other format. DO NOT omit the wrapper.
+
+## Examples
+
+Example of a single tool call:
+
+<tool_calls>
+[
+  {"name": "get_weather", "arguments": {"location": "Boston, MA"}}
+]
+</tool_calls>
+
+Example of multiple tool calls:
+
+<tool_calls>
+[
+  {"name": "search_web", "arguments": {"query": "latest AI news"}},
+  {"name": "summarize_text", "arguments": {"text": "A long text to be summarized..."}}
+]
+</tool_calls>"#.to_string()
+}
+
+fn pipe_calling_instructions() -> String {
+    r#"# Tool Call Format
+
+⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
+
+<|tool_calls_section_begin|><|tool_call_begin|>{function_name}<|tool_call_argument_begin|>{arguments}<|tool_call_end|><|tool_calls_section_end|>
+
+❌ DO NOT respond with tool calls in any other format. DO NOT omit the wrapper.
+
+## Examples
+
+Example of a single tool call:
+
+<|tool_calls_section_begin|><|tool_call_begin|>get_weather<|tool_call_argument_begin|>{"location": "Boston, MA"}<|tool_call_end|><|tool_calls_section_end|>
+
+Example of multiple tool calls:
+
+<|tool_calls_section_begin|><|tool_call_begin|>search_web<|tool_call_argument_begin|>{"query": "latest AI news"}<|tool_call_end|><|tool_call_begin|>summarize_text<|tool_call_argument_begin|>{"text": "A long text to be summarized..."}<|tool_call_end|><|tool_calls_section_end|>"#.to_string()
+}
+
+fn json_calling_instructions() -> String {
+    r#"# Tool Call Format
+
+⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
+
+<tool_calls>
+[
+  {
+    "name": "function_name",
+    "arguments": {"arg_name": "arg_value"}
+  }
+]
+</tool_calls>
+
+A JSON array inside <tool_calls> tags where each object contains:
+- "name": The function name (string)
+- "arguments": The function arguments (JSON object)
+
+❌ DO NOT respond with tool calls in any other format. DO NOT omit the wrapper.
+
+## Examples
+
+Example of a single tool call:
+
+<tool_calls>
+[
+  {
+    "name": "get_weather",
+    "arguments": {"location": "Boston, MA"}
+  }
+]
+</tool_calls>
+
+Example of multiple tool calls:
+
+<tool_calls>
+[
+  {
+    "name": "search_web",
+    "arguments": {"query": "latest AI news"}
+  },
+  {
+    "name": "summarize_text",
+    "arguments": {"text": "A long text to be summarized..."}
+  }
+]
+</tool_calls>"#
+        .to_string()
+}
+
+fn build_tool_system_message(
+    provider: ModelProvider,
+    functions: &[&crate::endpoints::chat::request_types::OpenAiFunction],
+) -> Result<String, ChatError> {
+    let preamble = build_tools_preamble(functions)?;
+    let calling_instructions = match provider {
+        ModelProvider::Zai => zai_calling_instructions(),
+        ModelProvider::Qwen => qwen_calling_instructions(),
+        ModelProvider::Kimi => pipe_calling_instructions(),
+        _ => json_calling_instructions(),
+    };
+
+    Ok(format!(
+        r###"# Tools
+
+You may call one or more functions to assist with the user query.
+
+{}
+
 {}
 "###,
-        function_signatures, wrapper_syntax, call_structure, single_example, multiple_example
-    )
+        preamble, calling_instructions
+    ))
 }
 
 /// Converts a ChatFunctionCall into a full ToolCall with generated ID
@@ -102,9 +231,10 @@ fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     serde_json::from_str::<Vec<ToolCall>>(&raw_json).ok()
 }
 
-/// Generates JSON tool system message
-fn json_tools_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
-    // This removes the wrapper that only adds the "type: function"
+fn tools_system_message(
+    tools: &[OpenAiTool],
+    provider: ModelProvider,
+) -> Result<ChatMessage, ChatError> {
     let functions = tools
         .iter()
         .map(|tool| {
@@ -113,150 +243,7 @@ fn json_tools_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
         })
         .collect::<Vec<_>>();
 
-    let function_signatures = format!(
-        "You are provided with available function signatures within the following JSON array:\n\n```json\n{}\n```",
-        serde_json::to_string_pretty(&functions)?
-    );
-
-    let wrapper_syntax = "<tool_calls>\n[...]\n</tool_calls>";
-
-    let call_structure = "A JSON array inside <tool_calls> tags where each object contains:\n- \"name\": The function name (string)\n- \"arguments\": The function arguments (JSON object)";
-
-    let single_example = r#"<tool_calls>
-[
-  {
-    "name": "get_weather",
-    "arguments": {"location": "Boston, MA"}
-  }
-]
-</tool_calls>"#;
-
-    let multiple_example = r#"<tool_calls>
-[
-  {
-    "name": "search_web",
-    "arguments": {"query": "latest AI news"}
-  },
-  {
-    "name": "summarize_text",
-    "arguments": {"text": "A long text to be summarized..."}
-  }
-]
-</tool_calls>"#;
-
-    let system_message = build_tool_system_message(
-        &function_signatures,
-        wrapper_syntax,
-        call_structure,
-        single_example,
-        multiple_example,
-    );
-
-    Ok(ChatMessage::system(system_message))
-}
-
-/// Generates XML tool system message
-fn xml_tools_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
-    let functions = tools
-        .iter()
-        .map(|tool| {
-            let OpenAiTool::Function(function) = tool;
-            function
-        })
-        .collect::<Vec<_>>();
-
-    let function_signatures = {
-        let formatted = functions
-            .iter()
-            .map(|f| {
-                let params = serde_json::to_string_pretty(&f.parameters).unwrap_or_default();
-                format!(
-                    "- Function: {}\n  Description: {}\n  Parameters: {}",
-                    f.name,
-                    f.description.as_deref().unwrap_or(""),
-                    params
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        format!("Available functions:\n{}", formatted)
-    };
-
-    let wrapper_syntax = "<tool_call>{function_name}\n<arg_key>{parameter_name}</arg_key>\n<arg_value>{parameter_value}</arg_value>\n</tool_call>";
-
-    let call_structure = "Each tool call must be wrapped in <tool_call> tags with the function name immediately after the opening tag. Parameters are specified using <arg_key> and <arg_value> pairs.";
-
-    let single_example = r#"<tool_call>get_weather
-<arg_key>location</arg_key>
-<arg_value>Boston, MA</arg_value>
-</tool_call>"#;
-
-    let multiple_example = r#"<tool_call>search_web
-<arg_key>query</arg_key>
-<arg_value>latest AI news</arg_value>
-</tool_call>
-<tool_call>summarize_text
-<arg_key>text</arg_key>
-<arg_value>A long text to be summarized...</arg_value>
-</tool_call>"#;
-
-    let system_message = build_tool_system_message(
-        &function_signatures,
-        wrapper_syntax,
-        call_structure,
-        single_example,
-        multiple_example,
-    );
-
-    Ok(ChatMessage::system(system_message))
-}
-
-/// Generates Qwen tool system message
-fn qwen_tools_message(tools: &[OpenAiTool]) -> Result<ChatMessage, ChatError> {
-    let functions = tools
-        .iter()
-        .map(|tool| {
-            let OpenAiTool::Function(function) = tool;
-            function
-        })
-        .collect::<Vec<_>>();
-
-    let function_signatures = {
-        let json_functions = functions
-            .iter()
-            .map(|f| serde_json::to_string(f).unwrap_or_default())
-            .collect::<Vec<_>>()
-            .join("\n");
-        format!(
-            "You are provided with function signatures within <tools></tools> XML tags:\n<tools>\n{}\n</tools>",
-            json_functions
-        )
-    };
-
-    let wrapper_syntax = "<tool_calls>\n[\n  {\"name\": <function-name>, \"arguments\": <args-json-object>},\n  ...\n]\n</tool_calls>";
-
-    let call_structure = "One or more tool calls in a JSON array wrapped in <tool_calls> XML tags. Each JSON object must contain \"name\" and \"arguments\" fields.";
-
-    let single_example = r#"<tool_calls>
-[
-  {"name": "get_weather", "arguments": {"location": "Boston, MA"}}
-]
-</tool_calls>"#;
-
-    let multiple_example = r#"<tool_calls>
-[
-  {"name": "search_web", "arguments": {"query": "latest AI news"}},
-  {"name": "summarize_text", "arguments": {"text": "A long text to be summarized..."}}
-]
-</tool_calls>"#;
-
-    let system_message = build_tool_system_message(
-        &function_signatures,
-        wrapper_syntax,
-        call_structure,
-        single_example,
-        multiple_example,
-    );
+    let system_message = build_tool_system_message(provider, &functions)?;
 
     Ok(ChatMessage::system(system_message))
 }
@@ -297,29 +284,27 @@ fn try_parse_xml_tool_call(content: &str) -> Option<Vec<ToolCall>> {
             continue;
         }
 
-        // Build JSON arguments
-        let mut args_json_str = String::from("{");
-        let mut first = true;
+        // Build JSON arguments by collecting keys and values separately
+        let keys: Vec<_> = XML_ARG_KEY_REGEX
+            .captures_iter(inner)
+            .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
+            .collect();
 
-        for arg_cap in XML_ARG_REGEX.captures_iter(inner) {
-            let arg_content = match arg_cap.get(1) {
-                Some(m) => m.as_str(),
-                None => continue,
-            };
-            if !first {
-                args_json_str.push(',');
+        let values: Vec<_> = XML_ARG_VALUE_REGEX
+            .captures_iter(inner)
+            .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
+            .collect();
+
+        if !keys.is_empty() && keys.len() == values.len() {
+            let mut args_map = serde_json::Map::new();
+            for (k, v) in keys.into_iter().zip(values) {
+                // Ensure values are properly JSON-escaped by storing them as serde_json::Value::String
+                args_map.insert(k, serde_json::Value::String(v));
             }
-            // Prepend quote to make it valid JSON key
-            args_json_str.push_str(&format!("\"{}", arg_content));
-            first = false;
-        }
-        args_json_str.push('}');
 
-        // Validate and parse JSON
-        if let Ok(args_value) = serde_json::from_str::<serde_json::Value>(&args_json_str) {
             tool_calls.push(function_call_to_tool_call(ChatFunctionCall {
                 name: function_name,
-                arguments: args_value,
+                arguments: serde_json::Value::Object(args_map),
             }));
         }
     }
@@ -376,19 +361,7 @@ fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     }
 }
 
-fn tools_system_message(
-    tools: &[OpenAiTool],
-    provider: ModelProvider,
-) -> Result<ChatMessage, ChatError> {
-    match provider {
-        ModelProvider::Zai => xml_tools_message(tools),
-        ModelProvider::Qwen => qwen_tools_message(tools),
-        ModelProvider::Kimi => json_tools_message(tools), // Fallback to JSON for Kimi as no system prompt provided
-        ModelProvider::Anthropic | ModelProvider::OpenAI | ModelProvider::Unknown => {
-            json_tools_message(tools)
-        }
-    }
-}
+// This function is now correctly covered by the refactored tools_system_message above
 
 pub fn convert_openai_message_with_provider(
     message: OpenAiChatMessage,
@@ -810,7 +783,8 @@ mod tests {
     #[test]
     fn test_openai_to_chat_message_assistant_with_custom_xml_tools() {
         let content_str = r#"<tool_call>read
-<arg_key>filePath": "/tmp/test_file.txt"</arg_value>
+<arg_key>filePath</arg_key>
+<arg_value>/tmp/test_file.txt</arg_value>
 </tool_call>"#;
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str.to_string()),
@@ -830,6 +804,32 @@ mod tests {
                 assert_eq!(
                     tool_calls[0].function.arguments["filePath"],
                     "/tmp/test_file.txt"
+                );
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
+
+    #[test]
+    fn test_openai_to_chat_message_assistant_with_complex_xml_tools() {
+        let content_str = r#"<tool_call>write
+<arg_key>content</arg_key>
+<arg_value>Line 1
+"Quoted Text"
+Line 2</arg_value>
+</tool_call>"#;
+        let chat_msg = ChatMessage::Assistant {
+            content: ChatContent::String(content_str.to_string()),
+        };
+        let open_ai_msg: OpenAiChatMessage = chat_msg.try_into().unwrap();
+        match open_ai_msg {
+            OpenAiChatMessage::Assistant { tool_calls, .. } => {
+                let tool_calls = tool_calls.unwrap();
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].function.name, "write");
+                assert_eq!(
+                    tool_calls[0].function.arguments["content"],
+                    "Line 1\n\"Quoted Text\"\nLine 2"
                 );
             }
             _ => panic!("Incorrect message type"),
