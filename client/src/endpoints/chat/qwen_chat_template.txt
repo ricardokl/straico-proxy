@@ -31,5 +31,32 @@
         {%- endif %}
         {%- if tool_call.function %}
           {%- set tool_call = tool_call.function %}
-        {%- endif %}\n                {{- '<tool_call>\\n{\"name\": \"' }}\n                {{- tool_call.name }}\n                {{- '\", \"arguments\": ' }}\n                {%- if tool_call.arguments is string %}\n                    {{- tool_call.arguments }}\n                {%- else %}\n                    {{- tool_call.arguments | tojson }}\n                {%- endif %}\n                {{- '}\\n</tool_call>' }}\n            {%- endfor %}\n        {%- endif %}\n        {{- '<|im_end|>\\n' }}\n    {%- elif message.role == \"tool\" %}\n        {%- if loop.first or (messages[loop.index0 - 1].role != \"tool\") %}\n            {{- '<|im_start|>user' }}\n        {%- endif %}\n        {{- '\\n<tool_response>\\n' }}\n        {{- content }}\n        {{- '\\n</tool_response>' }}\n        {%- if loop.last or (messages[loop.index0 + 1].role != \"tool\") %}\n            {{- '<|im_end|>\\n' }}\n        {%- endif %}\n    {%- endif %}\n{%- endfor %}\n{%- if add_generation_prompt %}\n    {{- '<|im_start|>assistant\\n' }}\n{%- endif %}
+        {%- endif %}
+        {{- '<tool_call>\\n{\"name\": \"' }}
+        {{- tool_call.name }}
+        {{- '\", \"arguments\": ' }}
+        {%- if tool_call.arguments is string %}
+          {{- tool_call.arguments }}
+        {%- else %}
+          {{- tool_call.arguments | tojson }}
+        {%- endif %}
+        {{- '}\\n</tool_call>' }}
+      {%- endfor %}
+    {%- endif %}
+    {{- '<|im_end|>\\n' }}
+  {%- elif message.role == \"tool\" %}
+    {%- if loop.first or (messages[loop.index0 - 1].role != \"tool\") %}
+      {{- '<|im_start|>user' }}
+    {%- endif %}
+    {{- '\\n<tool_response>\\n' }}
+    {{- content }}
+    {{- '\\n</tool_response>' }}
+    {%- if loop.last or (messages[loop.index0 + 1].role != \"tool\") %}
+      {{- '<|im_end|>\\n' }}
+    {%- endif %}
+  {%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+  {{- '<|im_start|>assistant\\n' }}
+{%- endif %}
  
