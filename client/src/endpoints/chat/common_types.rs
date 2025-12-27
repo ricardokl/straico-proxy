@@ -83,7 +83,7 @@ pub enum ModelProvider {
     Anthropic,
     OpenAI,
     Zai,
-    Kimi,
+    MoonshotAI,
     Qwen,
     Unknown,
 }
@@ -95,8 +95,10 @@ impl From<&str> for ModelProvider {
         match provider_prefix.as_str() {
             "anthropic" => ModelProvider::Anthropic,
             "openai" => ModelProvider::OpenAI,
+            // GLM models
             "z-ai" => ModelProvider::Zai,
-            "moonshotai" => ModelProvider::Kimi,
+            // Kimi models
+            "moonshotai" => ModelProvider::MoonshotAI,
             "qwen" => ModelProvider::Qwen,
             _ => ModelProvider::Unknown,
         }
@@ -245,10 +247,10 @@ mod tests {
     }
 
     #[test]
-    fn test_provider_detection_kimi() {
+    fn test_provider_detection_moonshotai() {
         assert_eq!(
             ModelProvider::from("moonshotai/moonshot-v1"),
-            ModelProvider::Kimi
+            ModelProvider::MoonshotAI
         );
     }
 

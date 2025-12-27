@@ -108,7 +108,7 @@ impl ChatProvider for StraicoProvider {
         model: &str,
         response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
     ) -> HttpResponse {
-        create_straico_streaming_response(model, response_future, self.heartbeat_char.clone())
+        create_straico_streaming_response(model, response_future, self.heartbeat_char)
     }
 }
 

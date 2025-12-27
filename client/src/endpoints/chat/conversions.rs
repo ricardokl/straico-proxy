@@ -21,7 +21,7 @@ static XML_ARG_KEY_REGEX: Lazy<Regex> =
 static XML_ARG_VALUE_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<arg_value>(.*?)</arg_value>").unwrap());
 
-static PIPE_TOOL_CALL_REGEX: Lazy<Regex> =
+static MOONSHOT_TOOL_CALL_REGEX: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?s)<\|tool_call_begin\|>(.*?)<\|tool_call_end\|>").unwrap());
 
 /// Shared preamble for all providers, standardizing the function definitions section.
@@ -74,14 +74,11 @@ fn qwen_calling_instructions() -> String {
 
 ⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
 
-<tool_calls>
-[
-  {"name": <function-name>, "arguments": <args-json-object>},
-  ...
-]
-</tool_calls>
+<tool_call>
+{"name": "function_name", "arguments": {"arg_name": "arg_value"}}
+</tool_call>
 
-One or more tool calls in a JSON array wrapped in <tool_calls> XML tags. Each JSON object must contain "name" and "arguments" fields.
+Each tool call must be a JSON object containing "name" and "arguments" fields, wrapped in <tool_call> XML tags.
 
 ❌ DO NOT respond with tool calls in any other format. DO NOT omit the wrapper.
 
@@ -89,23 +86,21 @@ One or more tool calls in a JSON array wrapped in <tool_calls> XML tags. Each JS
 
 Example of a single tool call:
 
-<tool_calls>
-[
-  {"name": "get_weather", "arguments": {"location": "Boston, MA"}}
-]
-</tool_calls>
+<tool_call>
+{"name": "get_weather", "arguments": {"location": "Boston, MA"}}
+</tool_call>
 
 Example of multiple tool calls:
 
-<tool_calls>
-[
-  {"name": "search_web", "arguments": {"query": "latest AI news"}},
-  {"name": "summarize_text", "arguments": {"text": "A long text to be summarized..."}}
-]
-</tool_calls>"#.to_string()
+<tool_call>
+{"name": "search_web", "arguments": {"query": "latest AI news"}}
+</tool_call>
+<tool_call>
+{"name": "summarize_text", "arguments": {"text": "A long text to be summarized..."}}
+</tool_call>"#.to_string()
 }
 
-fn pipe_calling_instructions() -> String {
+fn moonshot_calling_instructions() -> String {
     r#"# Tool Call Format
 
 ⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
@@ -183,7 +178,7 @@ fn build_tool_system_message(
     let calling_instructions = match provider {
         ModelProvider::Zai => zai_calling_instructions(),
         ModelProvider::Qwen => qwen_calling_instructions(),
-        ModelProvider::Kimi => pipe_calling_instructions(),
+        ModelProvider::MoonshotAI => moonshot_calling_instructions(),
         _ => json_calling_instructions(),
     };
 
@@ -248,27 +243,37 @@ fn tools_system_message(
     Ok(ChatMessage::system(system_message))
 }
 
-/// Helper to try parsing XML tool calls (handles both Qwen JSON and Zai XML formats inside <tool_call>)
 fn try_parse_xml_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     let mut tool_calls = Vec::new();
 
     for cap in XML_SINGLE_TOOL_CALL_REGEX.captures_iter(content) {
-        let inner = match cap.get(1) {
+        let mut inner = match cap.get(1) {
             Some(m) => m.as_str().trim(),
             None => continue,
         };
 
-        // 1. First try parsing the inner content as JSON (Qwen format: {"name": "...", "arguments": {...}})
-        if let Ok(call_obj) = serde_json::from_str::<serde_json::Value>(inner)
-            && let (Some(name), Some(args)) = (
-                call_obj.get("name").and_then(|n| n.as_str()),
-                call_obj.get("arguments"),
-            )
+        // Handle markdown code blocks if present
+        if inner.starts_with("```")
+            && let Some(end_idx) = inner.rfind("```")
+            && end_idx > 3
         {
-            tool_calls.push(function_call_to_tool_call(ChatFunctionCall {
-                name: name.to_string(),
-                arguments: args.clone(),
-            }));
+            let block_content = &inner[3..end_idx].trim();
+            // Skip optional language identifier (like 'json')
+            if let Some(newline_idx) = block_content.find('\n') {
+                let potential_lang = block_content[..newline_idx].trim();
+                if !potential_lang.contains('{') && !potential_lang.contains('[') {
+                    inner = block_content[newline_idx..].trim();
+                } else {
+                    inner = block_content;
+                }
+            } else {
+                inner = block_content;
+            }
+        }
+
+        // 1. First try parsing the inner content as JSON (Qwen format: {"name": "...", "arguments": {...}})
+        if let Ok(func) = serde_json::from_str::<ChatFunctionCall>(inner) {
+            tool_calls.push(function_call_to_tool_call(func));
             continue;
         }
 
@@ -316,15 +321,15 @@ fn try_parse_xml_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     }
 }
 
-/// Helper to try parsing pipe tool calls
-fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
+/// Helper to try parsing Moonshot tool calls
+fn try_parse_moonshot_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     if !content.contains("<|tool_calls_section_begin|>") {
         return None;
     }
 
     let mut tool_calls = Vec::new();
 
-    for cap in PIPE_TOOL_CALL_REGEX.captures_iter(content) {
+    for cap in MOONSHOT_TOOL_CALL_REGEX.captures_iter(content) {
         let inner = cap.get(1)?.as_str();
 
         // Split into function name and arguments
@@ -363,6 +368,98 @@ fn try_parse_pipe_tool_call(content: &str) -> Option<Vec<ToolCall>> {
 
 // This function is now correctly covered by the refactored tools_system_message above
 
+fn format_tool_calls(
+    tool_calls: &[ToolCall],
+    provider: ModelProvider,
+) -> Result<String, ChatError> {
+    match provider {
+        ModelProvider::MoonshotAI => {
+            let mut formatted = String::from("<|tool_calls_section_begin|>");
+            for tool_call in tool_calls {
+                let args = match tool_call.function.arguments.as_str() {
+                    Some(s) => s.to_string(),
+                    None => serde_json::to_string(&tool_call.function.arguments)?,
+                };
+
+                let name = if tool_call.function.name.is_empty() {
+                    &tool_call.id
+                } else {
+                    &tool_call.function.name
+                };
+
+                formatted.push_str(&format!(
+                    "<|tool_call_begin|>{}<|tool_call_argument_begin|>{}<|tool_call_end|>",
+                    name, args
+                ));
+            }
+            formatted.push_str("<|tool_calls_section_end|>");
+            Ok(formatted)
+        }
+        ModelProvider::Qwen => {
+            let mut formatted = String::new();
+            for tool_call in tool_calls {
+                let name = if tool_call.function.name.is_empty() {
+                    &tool_call.id
+                } else {
+                    &tool_call.function.name
+                };
+
+                let call_obj = serde_json::json!({
+                    "name": name,
+                    "arguments": tool_call.function.arguments
+                });
+                formatted.push_str(&format!(
+                    "<tool_call>\n{}\n</tool_call>\n",
+                    serde_json::to_string(&call_obj)?
+                ));
+            }
+            Ok(formatted.trim().to_string())
+        }
+        ModelProvider::Zai => {
+            let mut formatted = String::new();
+            for tool_call in tool_calls {
+                let name = if tool_call.function.name.is_empty() {
+                    &tool_call.id
+                } else {
+                    &tool_call.function.name
+                };
+
+                formatted.push_str(&format!("<tool_call>{}\n", name));
+                if let Some(obj) = tool_call.function.arguments.as_object() {
+                    for (k, v) in obj {
+                        let val_str = if v.is_string() {
+                            v.as_str().unwrap().to_string()
+                        } else {
+                            v.to_string()
+                        };
+                        formatted.push_str(&format!(
+                            "<arg_key>{}</arg_key>\n<arg_value>{}</arg_value>\n",
+                            k, val_str
+                        ));
+                    }
+                }
+                formatted.push_str("</tool_call>\n");
+            }
+            Ok(formatted.trim().to_string())
+        }
+        _ => {
+            let simplified: Vec<_> = tool_calls
+                .iter()
+                .map(|tc| {
+                    serde_json::json!({
+                        "name": if tc.function.name.is_empty() { &tc.id } else { &tc.function.name },
+                        "arguments": tc.function.arguments
+                    })
+                })
+                .collect();
+            Ok(format!(
+                "<tool_calls>\n{}\n</tool_calls>",
+                serde_json::to_string_pretty(&simplified)?
+            ))
+        }
+    }
+}
+
 pub fn convert_openai_message_with_provider(
     message: OpenAiChatMessage,
     provider: ModelProvider,
@@ -373,39 +470,21 @@ pub fn convert_openai_message_with_provider(
         OpenAiChatMessage::Assistant {
             content,
             tool_calls,
-        } => ChatMessage::Assistant {
-            content: if let Some(tool_calls) = tool_calls {
-                match provider {
-                    ModelProvider::Kimi => {
-                        // Kimi specific formatting
-                        let mut formatted = String::from("<|tool_calls_section_begin|>");
-                        for tool_call in &tool_calls {
-                            let args = if tool_call.function.arguments.is_string() {
-                                tool_call.function.arguments.as_str().unwrap().to_string()
-                            } else {
-                                serde_json::to_string(&tool_call.function.arguments)?
-                            };
+        } => {
+            let mut final_content = content.map(|c| c.to_string()).unwrap_or_default();
 
-                            let name = if tool_call.function.name.is_empty() {
-                                &tool_call.id
-                            } else {
-                                &tool_call.function.name
-                            };
-
-                            formatted.push_str(&format!(
-                                "<|tool_call_begin|>{}<|tool_call_argument_begin|>{}<|tool_call_end|>",
-                                name, args
-                            ));
-                        }
-                        formatted.push_str("<|tool_calls_section_end|>");
-                        ChatContent::String(formatted)
-                    }
-                    _ => ChatContent::String(serde_json::to_string_pretty(&tool_calls)?),
+            if let Some(tool_calls) = tool_calls {
+                let formatted_tools = format_tool_calls(&tool_calls, provider)?;
+                if !final_content.is_empty() {
+                    final_content.push_str("\n\n");
                 }
-            } else {
-                content.unwrap_or(ChatContent::String("".to_string()))
-            },
-        },
+                final_content.push_str(&formatted_tools);
+            }
+
+            ChatMessage::Assistant {
+                content: ChatContent::String(final_content),
+            }
+        }
         OpenAiChatMessage::Tool { .. } => ChatMessage::User {
             content: ChatContent::String(serde_json::to_string_pretty(&message)?),
         },
@@ -462,15 +541,15 @@ pub fn convert_message_with_provider(
             let final_tool_calls = match provider {
                 ModelProvider::Zai => try_parse_xml_tool_call(&content_str)
                     .or_else(|| try_parse_json_tool_call(&content_str))
-                    .or_else(|| try_parse_pipe_tool_call(&content_str)),
-                ModelProvider::Kimi => try_parse_pipe_tool_call(&content_str)
+                    .or_else(|| try_parse_moonshot_tool_call(&content_str)),
+                ModelProvider::MoonshotAI => try_parse_moonshot_tool_call(&content_str)
                     .or_else(|| try_parse_json_tool_call(&content_str)),
                 ModelProvider::Qwen => try_parse_xml_tool_call(&content_str)
                     .or_else(|| try_parse_json_tool_call(&content_str)),
                 ModelProvider::Anthropic | ModelProvider::OpenAI | ModelProvider::Unknown => {
                     try_parse_json_tool_call(&content_str)
                         .or_else(|| try_parse_xml_tool_call(&content_str))
-                        .or_else(|| try_parse_pipe_tool_call(&content_str))
+                        .or_else(|| try_parse_moonshot_tool_call(&content_str))
                 }
             };
 
@@ -580,11 +659,90 @@ mod tests {
         let chat_msg: ChatMessage = open_ai_msg.try_into().unwrap();
         match chat_msg {
             ChatMessage::Assistant { content } => {
-                let expected_json = serde_json::to_string_pretty(&tool_calls).unwrap();
-                assert_eq!(content.to_string(), expected_json);
+                let content_str = content.to_string();
+                assert!(content_str.contains("<tool_calls>"));
+                assert!(content_str.contains("test_func"));
             }
             _ => panic!("Incorrect message type"),
         }
+    }
+
+    #[test]
+    fn test_qwen_tool_call_formatting() {
+        let tool_calls = vec![ToolCall {
+            id: "call_123".to_string(),
+            tool_type: "function".to_string(),
+            function: ChatFunctionCall {
+                name: "test_func".to_string(),
+                arguments: serde_json::json!({"arg": "val"}),
+            },
+            index: None,
+        }];
+        let open_ai_msg = OpenAiChatMessage::Assistant {
+            content: Some(ChatContent::String("Thinking...".to_string())),
+            tool_calls: Some(tool_calls),
+        };
+
+        let chat_msg =
+            convert_openai_message_with_provider(open_ai_msg, ModelProvider::Qwen).unwrap();
+
+        match chat_msg {
+            ChatMessage::Assistant { content } => {
+                let content_str = content.to_string();
+                assert!(content_str.contains("Thinking..."));
+                assert!(content_str.contains("<tool_call>"));
+                assert!(content_str.contains("\"name\":\"test_func\""));
+                assert!(content_str.contains("\"arguments\":{\"arg\":\"val\"}"));
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
+
+    #[test]
+    fn test_zai_tool_call_formatting() {
+        let tool_calls = vec![ToolCall {
+            id: "call_456".to_string(),
+            tool_type: "function".to_string(),
+            function: ChatFunctionCall {
+                name: "test_func".to_string(),
+                arguments: serde_json::json!({"arg1": "val1", "arg2": 2}),
+            },
+            index: None,
+        }];
+        let open_ai_msg = OpenAiChatMessage::Assistant {
+            content: None,
+            tool_calls: Some(tool_calls),
+        };
+
+        let chat_msg =
+            convert_openai_message_with_provider(open_ai_msg, ModelProvider::Zai).unwrap();
+
+        match chat_msg {
+            ChatMessage::Assistant { content } => {
+                let content_str = content.to_string();
+                assert!(content_str.contains("<tool_call>test_func"));
+                assert!(content_str.contains("<arg_key>arg1</arg_key>"));
+                assert!(content_str.contains("<arg_value>val1</arg_value>"));
+                assert!(content_str.contains("<arg_key>arg2</arg_key>"));
+                assert!(content_str.contains("<arg_value>2</arg_value>"));
+                assert!(content_str.contains("</tool_call>"));
+            }
+            _ => panic!("Incorrect message type"),
+        }
+    }
+
+    #[test]
+    fn test_qwen_xml_json_parsing() {
+        // Test clean JSON
+        let content1 =
+            "<tool_call>\n{\"name\": \"func1\", \"arguments\": {\"k\": \"v\"}}\n</tool_call>";
+        let tool_calls1 = try_parse_xml_tool_call(content1).expect("Should parse clean JSON");
+        assert_eq!(tool_calls1[0].function.name, "func1");
+
+        // Test JSON in markdown block
+        let content2 = "<tool_call>\n```json\n{\"name\": \"func2\", \"arguments\": {\"k\": \"v\"}}\n```\n</tool_call>";
+        let tool_calls2 = try_parse_xml_tool_call(content2).expect("Should parse markdown JSON");
+        assert_eq!(tool_calls2[0].function.name, "func2");
     }
 
     #[test]
@@ -837,7 +995,7 @@ Line 2</arg_value>
     }
 
     #[test]
-    fn test_openai_to_chat_message_assistant_with_pipe_tools() {
+    fn test_openai_to_chat_message_assistant_with_moonshot_tools() {
         let content_str = r#"<|tool_calls_section_begin|><|tool_call_begin|>functions.view:0<|tool_call_argument_begin|>{"file_path": "/tmp/random_file.txt"}<|tool_call_end|><|tool_calls_section_end|>"#;
         let chat_msg = ChatMessage::Assistant {
             content: ChatContent::String(content_str.to_string()),
@@ -864,7 +1022,7 @@ Line 2</arg_value>
     }
 
     #[test]
-    fn test_kimi_tool_call_formatting() {
+    fn test_moonshot_tool_call_formatting() {
         let tool_calls = vec![ToolCall {
             id: "call_12345".to_string(),
             tool_type: "function".to_string(),
@@ -880,9 +1038,9 @@ Line 2</arg_value>
             tool_calls: Some(tool_calls),
         };
 
-        // We explicitly use Kimi provider
+        // We explicitly use MoonshotAI provider
         let result =
-            convert_openai_message_with_provider(open_ai_msg, ModelProvider::Kimi).unwrap();
+            convert_openai_message_with_provider(open_ai_msg, ModelProvider::MoonshotAI).unwrap();
 
         match result {
             ChatMessage::Assistant { content } => {

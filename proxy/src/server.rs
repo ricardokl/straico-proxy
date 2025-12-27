@@ -128,7 +128,7 @@ pub async fn openai_chat_completion(
             let provider = StraicoProvider {
                 client: client.clone(),
                 key: key.clone(),
-                heartbeat_char: heartbeat_char.clone(),
+                heartbeat_char: *heartbeat_char,
             };
             handle_chat_completion_async(&provider, &openai_request, model, stream).await
         }
