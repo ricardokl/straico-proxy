@@ -10,7 +10,10 @@ pub struct ChatFunctionCall {
     /// The name of the function being called
     pub name: String,
     /// The arguments to pass to the function, as a JSON object
-    #[serde(deserialize_with = "string_or_object_to_value_deserializer")]
+    #[serde(
+        deserialize_with = "string_or_object_to_value_deserializer",
+        serialize_with = "value_to_string_serializer"
+    )]
     pub arguments: serde_json::Value,
 }
 
@@ -31,6 +34,17 @@ where
         StringOrObject::String(s) => serde_json::from_str(&s).map_err(serde::de::Error::custom),
         StringOrObject::Object(v) => Ok(v),
     }
+}
+
+pub fn value_to_string_serializer<S>(
+    value: &serde_json::Value,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let s = serde_json::to_string(value).map_err(serde::ser::Error::custom)?;
+    serializer.serialize_str(&s)
 }
 
 /// Content format that can be either a string or an array of content objects.
@@ -270,10 +284,78 @@ mod tests {
     }
 
     #[test]
-    fn test_from_model_id_method() {
+    fn test_chat_function_call_serialization() {
+        use super::ChatFunctionCall;
+        use serde_json::json;
+
+        let fc = ChatFunctionCall {
+            name: "test_func".to_string(),
+            arguments: json!({
+                "arg1": "val1",
+                "arg2": 42
+            }),
+        };
+
+        let serialized = serde_json::to_string(&fc).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+
+        // The arguments field should be a string, not an object
+        assert!(parsed["arguments"].is_string());
+
+        // The string should be a valid JSON representation of the original object
+        let arguments_str = parsed["arguments"].as_str().unwrap();
+        let arguments_json: serde_json::Value = serde_json::from_str(arguments_str).unwrap();
         assert_eq!(
-            ModelProvider::from_model_id("anthropic/claude-3-haiku"),
-            ModelProvider::Anthropic
+            arguments_json,
+            json!({
+                "arg1": "val1",
+                "arg2": 42
+            })
+        );
+    }
+
+    #[test]
+    fn test_chat_function_call_deserialization_from_string() {
+        use super::ChatFunctionCall;
+        use serde_json::json;
+
+        let json_data = json!({
+            "name": "test_func",
+            "arguments": "{\"arg1\": \"val1\", \"arg2\": 42}"
+        });
+
+        let fc: ChatFunctionCall = serde_json::from_value(json_data).unwrap();
+        assert_eq!(fc.name, "test_func");
+        assert_eq!(
+            fc.arguments,
+            json!({
+                "arg1": "val1",
+                "arg2": 42
+            })
+        );
+    }
+
+    #[test]
+    fn test_chat_function_call_deserialization_from_object() {
+        use super::ChatFunctionCall;
+        use serde_json::json;
+
+        let json_data = json!({
+            "name": "test_func",
+            "arguments": {
+                "arg1": "val1",
+                "arg2": 42
+            }
+        });
+
+        let fc: ChatFunctionCall = serde_json::from_value(json_data).unwrap();
+        assert_eq!(fc.name, "test_func");
+        assert_eq!(
+            fc.arguments,
+            json!({
+                "arg1": "val1",
+                "arg2": 42
+            })
         );
     }
 }
