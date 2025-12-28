@@ -4,12 +4,17 @@ use serde::{Deserialize, Deserializer, Serialize};
 ///
 /// # Fields
 /// * `name` - The name of the function called
-/// * `arguments` - The function arguments as a JSON object
+/// * `arguments` - The function arguments; internally `serde_json::Value`, serialized as JSON string
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct ChatFunctionCall {
     /// The name of the function being called
     pub name: String,
-    /// The arguments to pass to the function, as a JSON object
+    /// The arguments to pass to the function. Internally stored as a `serde_json::Value`,
+/// but serialized as a JSON string containing the JSON-encoded object.
+/// 
+/// # Example
+/// - In memory: `serde_json::json!({"key": "value"})`
+/// - Serialized: `"{\"key\":\"value\"}"`
     #[serde(
         deserialize_with = "string_or_object_to_value_deserializer",
         serialize_with = "value_to_string_serializer"
