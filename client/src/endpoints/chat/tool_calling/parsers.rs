@@ -28,6 +28,34 @@ pub fn function_call_to_tool_call(function: ChatFunctionCall) -> ToolCall {
     }
 }
 
+/// Helper to strip markdown code blocks from content
+pub fn strip_markdown_code_block(content: &str) -> &str {
+    if !content.starts_with("```") {
+        return content;
+    }
+
+    let Some(end_idx) = content.rfind("```") else {
+        return content;
+    };
+
+    if end_idx <= 3 {
+        return content;
+    }
+
+    let block_content = content[3..end_idx].trim();
+
+    // Look for a first newline to detect an optional language identifier
+    if let Some(newline_idx) = block_content.find('\n') {
+        let potential_lang = block_content[..newline_idx].trim();
+        // If the first-line token does not contain '{' or '[', it is a language tag
+        if !potential_lang.contains('{') && !potential_lang.contains('[') {
+            return block_content[newline_idx..].trim();
+        }
+    }
+
+    block_content
+}
+
 /// Try parsing JSON tool calls from a <tool_calls> XML tag
 pub fn try_parse_json_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     let raw_json = XML_TOOL_CALL_REGEX
@@ -53,29 +81,13 @@ pub fn try_parse_xml_tool_call(content: &str) -> Option<Vec<ToolCall>> {
     let mut tool_calls = Vec::new();
 
     for cap in XML_SINGLE_TOOL_CALL_REGEX.captures_iter(content) {
-        let mut inner = match cap.get(1) {
+        let inner = match cap.get(1) {
             Some(m) => m.as_str().trim(),
             None => continue,
         };
 
         // Handle markdown code blocks if present
-        if inner.starts_with("```")
-            && let Some(end_idx) = inner.rfind("```")
-            && end_idx > 3
-        {
-            let block_content = &inner[3..end_idx].trim();
-            // Skip optional language identifier (like 'json')
-            if let Some(newline_idx) = block_content.find('\n') {
-                let potential_lang = block_content[..newline_idx].trim();
-                if !potential_lang.contains('{') && !potential_lang.contains('[') {
-                    inner = block_content[newline_idx..].trim();
-                } else {
-                    inner = block_content;
-                }
-            } else {
-                inner = block_content;
-            }
-        }
+        let inner = strip_markdown_code_block(inner);
 
         // 1. First try parsing the inner content as JSON (Qwen format: {"name": "...", "arguments": {...}})
         if let Ok(func) = serde_json::from_str::<ChatFunctionCall>(inner) {
@@ -199,6 +211,45 @@ pub fn parse_tool_calls(content: &str, provider: ModelProvider) -> Option<Vec<To
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_strip_markdown_code_block() {
+        // Case: No language tag
+        let input = "```\ncontent\n```";
+        assert_eq!(strip_markdown_code_block(input), "content");
+
+        // Case: With language tag
+        let input = "```json\n{\"name\": \"test\"}\n```";
+        assert_eq!(strip_markdown_code_block(input), "{\"name\": \"test\"}");
+
+        // Case: Language tag with spaces
+        let input = "``` json \ncontent\n ```";
+        assert_eq!(strip_markdown_code_block(input), "content");
+
+        // Case: No closing fence
+        let input = "```json\ncontent";
+        assert_eq!(strip_markdown_code_block(input), "```json\ncontent");
+
+        // Case: Closing fence at very beginning
+        let input = "```\n```";
+        assert_eq!(strip_markdown_code_block(input), "");
+
+        // Case: Too short
+        let input = "```";
+        assert_eq!(strip_markdown_code_block(input), "```");
+
+        // Case: Regular content (no fence)
+        let input = "regular content";
+        assert_eq!(strip_markdown_code_block(input), "regular content");
+
+        // Case: JSON starting immediately (no language tag detection)
+        let input = "```\n{\"key\": \"value\"}\n```";
+        assert_eq!(strip_markdown_code_block(input), "{\"key\": \"value\"}");
+
+        // Case: Ambiguous language tag (looks like JSON)
+        let input = "```{\"a\": 1}\ncontent\n```";
+        assert_eq!(strip_markdown_code_block(input), "{\"a\": 1}\ncontent");
+    }
 
     #[test]
     fn test_qwen_xml_json_parsing() {
