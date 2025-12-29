@@ -81,15 +81,14 @@ pub async fn model_handler(
 /// specialized code with zero abstraction overhead.
 async fn handle_chat_completion_async<P: ChatProvider>(
     provider: &P,
-    openai_request: &OpenAiChatRequest,
-    model: &str,
-    stream: bool,
+    openai_request: OpenAiChatRequest,
 ) -> Result<HttpResponse, ProxyError> {
-    let response_future = provider.send_request(openai_request)?;
-
-    if stream {
-        Ok(provider.create_streaming_response(&model, response_future))
+    if openai_request.stream {
+        let model = openai_request.chat_request.model.clone();
+        let response_future = provider.send_request(openai_request)?;
+        provider.create_streaming_response(&model, response_future)
     } else {
+        let response_future = provider.send_request(openai_request)?;
         let response = response_future.await?;
         let json = provider.parse_non_streaming(response).await?;
         Ok(HttpResponse::Ok().json(json))
@@ -103,8 +102,6 @@ pub async fn openai_chat_completion(
 ) -> Result<HttpResponse, ProxyError> {
     let openai_request = req.into_inner();
     debug!("{}", serde_json::to_string_pretty(&openai_request)?);
-    let model_str = openai_request.chat_request.model.as_str();
-    let stream = openai_request.stream;
 
     let AppState {
         ref client,
@@ -114,6 +111,7 @@ pub async fn openai_chat_completion(
     } = &*data.into_inner();
 
     // Determine provider type based on model and router configuration
+    let model_str = openai_request.chat_request.model.as_str();
     let provider_type = if router_client.is_some() {
         // Router mode is active - resolve based on model prefix
         Provider::from_model(model_str)?
@@ -130,7 +128,7 @@ pub async fn openai_chat_completion(
                 key: key.clone(),
                 heartbeat_char: *heartbeat_char,
             };
-            handle_chat_completion_async(&provider, &openai_request, model_str, stream).await
+            handle_chat_completion_async(&provider, openai_request).await
         }
         Provider::Generic(gen_type) => {
             let client = router_client
@@ -142,7 +140,7 @@ pub async fn openai_chat_completion(
                 })?
                 .clone();
             let provider = GenericProvider::new(gen_type, client)?;
-            handle_chat_completion_async(&provider, &openai_request, model_str, stream).await
+            handle_chat_completion_async(&provider, openai_request).await
         }
     }
 }

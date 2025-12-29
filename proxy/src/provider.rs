@@ -5,6 +5,7 @@ use crate::{
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
 use actix_web::HttpResponse;
+use bytes::Bytes;
 use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
 use std::future::Future;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,7 +22,7 @@ pub trait ChatProvider {
     /// Build and send the upstream request.
     fn send_request(
         &self,
-        request: &OpenAiChatRequest,
+        request: OpenAiChatRequest,
     ) -> Result<impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static, ProxyError>;
 
     /// Parse a non-streaming response into a JSON value.
@@ -38,7 +39,7 @@ pub trait ChatProvider {
         &self,
         model: &str,
         response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
-    ) -> HttpResponse;
+    ) -> Result<HttpResponse, ProxyError>;
 }
 
 /// Provider implementation for the native Straico backend.
@@ -56,10 +57,10 @@ impl ChatProvider for StraicoProvider {
 
     fn send_request(
         &self,
-        request: &OpenAiChatRequest,
+        request: OpenAiChatRequest,
     ) -> Result<impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static, ProxyError>
     {
-        let chat_request = StraicoChatRequest::try_from(request.clone())?;
+        let chat_request = StraicoChatRequest::try_from(request)?;
         Ok(self
             .client
             .clone()
@@ -107,7 +108,7 @@ impl ChatProvider for StraicoProvider {
         &self,
         model: &str,
         response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
-    ) -> HttpResponse {
+    ) -> Result<HttpResponse, ProxyError> {
         create_straico_streaming_response(model, response_future, self.heartbeat_char)
     }
 }
@@ -146,7 +147,7 @@ impl ChatProvider for GenericProvider {
 
     fn send_request(
         &self,
-        request: &OpenAiChatRequest,
+        request: OpenAiChatRequest,
     ) -> Result<impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static, ProxyError>
     {
         let provider = self.provider_kind();
@@ -155,7 +156,7 @@ impl ChatProvider for GenericProvider {
             .client
             .post(provider.base_url())
             .bearer_auth(&self.api_key)
-            .json(request)
+            .json(&request)
             .send())
     }
 
@@ -180,8 +181,8 @@ impl ChatProvider for GenericProvider {
         &self,
         _model: &str,
         response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
-    ) -> HttpResponse {
-        create_generic_streaming_response(response_future)
+    ) -> Result<HttpResponse, ProxyError> {
+        Ok(create_generic_streaming_response(response_future))
     }
 }
 
@@ -197,7 +198,7 @@ fn create_straico_streaming_response(
     model: &str,
     future_response: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
     heartbeat_char: HeartbeatChar,
-) -> HttpResponse {
+) -> Result<HttpResponse, ProxyError> {
     let id = format!("chatcmpl-{}", Uuid::new_v4());
     let created = get_current_timestamp();
 
@@ -207,10 +208,11 @@ fn create_straico_streaming_response(
 
     let (remote, remote_handle) = future_response.remote_handle();
 
+    let heartbeat_chunk: Bytes =
+        SseChunk::from(CompletionStream::heartbeat_chunk(&heartbeat_char)).try_into()?;
+
     let heartbeat = tokio_stream::StreamExt::throttle(
-        stream::repeat_with(move || {
-            SseChunk::from(CompletionStream::heartbeat_chunk(&heartbeat_char)).try_into()
-        }),
+        stream::repeat(heartbeat_chunk).map(Ok::<Bytes, ProxyError>),
         Duration::from_secs(3),
     )
     .take_until(remote);
@@ -238,9 +240,9 @@ fn create_straico_streaming_response(
         .chain(straico_stream)
         .chain(done);
 
-    HttpResponse::Ok()
+    Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
-        .streaming(response_stream)
+        .streaming(response_stream))
 }
 
 fn create_generic_streaming_response(

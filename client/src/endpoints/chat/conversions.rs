@@ -494,28 +494,29 @@ pub fn convert_openai_message_with_provider(
 impl TryFrom<OpenAiChatRequest> for StraicoChatRequest {
     type Error = ChatError;
 
-    fn try_from(request: OpenAiChatRequest) -> Result<Self, Self::Error> {
+    fn try_from(mut request: OpenAiChatRequest) -> Result<Self, Self::Error> {
         let provider = ModelProvider::from_model_id(&request.chat_request.model);
 
-        let mut messages: Vec<ChatMessage> = request
+        let messages: Vec<ChatMessage> = request
             .chat_request
             .messages
             .into_iter()
             .map(|msg| convert_openai_message_with_provider(msg, provider))
             .collect::<Result<_, _>>()?;
 
-        if let Some(tools) = &request.tools
-            && !tools.is_empty()
-        {
-            messages.insert(0, tools_system_message(tools, provider)?);
-        }
-
-        Ok(ChatRequest::builder()
-            .model(&request.chat_request.model)
+        let mut builder = ChatRequest::builder()
+            .model(std::mem::take(&mut request.chat_request.model))
             .max_tokens(request.chat_request.max_tokens)
             .temperature(request.chat_request.temperature)
-            .messages(messages)
-            .build())
+            .messages(messages);
+
+        if let Some(tools) = request.tools
+            && !tools.is_empty()
+        {
+            builder = builder.message(tools_system_message(&tools, provider)?);
+        }
+
+        Ok(builder.build())
     }
 }
 
