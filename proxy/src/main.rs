@@ -39,8 +39,9 @@ async fn main() -> anyhow::Result<()> {
 
     if cli.list_models {
         let client = StraicoClient::new();
+        let endpoint = straico_client::endpoints::models::ListModelsEndpoint;
         let response = client
-            .models()
+            .request(&endpoint)
             .bearer_auth(&api_key)
             .send()
             .await

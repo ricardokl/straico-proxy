@@ -21,7 +21,8 @@ pub struct AppState {
 #[get("/v1/models")]
 pub async fn models_handler(data: web::Data<AppState>) -> Result<HttpResponse, ProxyError> {
     let client = data.client.clone();
-    let straico_response = client.models().bearer_auth(&data.key).send().await?;
+    let endpoint = straico_client::endpoints::models::ListModelsEndpoint;
+    let straico_response = client.request(&endpoint).bearer_auth(&data.key).send().await?;
 
     let status_code = actix_web::http::StatusCode::from_u16(straico_response.status().as_u16())
         .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
@@ -52,8 +53,10 @@ pub async fn model_handler(
     model_id: web::Path<String>,
 ) -> Result<HttpResponse, ProxyError> {
     let client = data.client.clone();
+    let endpoint =
+        straico_client::endpoints::models::GetModelEndpoint::new(model_id.into_inner());
     let straico_response = client
-        .model(&model_id)
+        .request(&endpoint)
         .bearer_auth(&data.key)
         .send()
         .await?;

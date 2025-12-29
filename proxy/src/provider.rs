@@ -60,12 +60,12 @@ impl ChatProvider for StraicoProvider {
     ) -> Result<impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static, ProxyError>
     {
         let chat_request = StraicoChatRequest::try_from(request.clone())?;
+        let endpoint = straico_client::endpoints::chat::ChatEndpoint::new(chat_request);
         Ok(self
             .client
             .clone()
-            .chat()
+            .request(&endpoint)
             .bearer_auth(&self.key)
-            .json(chat_request)
             .send())
     }
 
