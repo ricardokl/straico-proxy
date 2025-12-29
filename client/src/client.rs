@@ -1,8 +1,7 @@
 use reqwest::{Client, ClientBuilder, RequestBuilder};
-use serde::Serialize;
 use std::{fmt::Display, future::Future, marker::PhantomData, time::Duration};
 
-use crate::endpoints::chat::{ChatMessage, ChatRequest};
+use crate::endpoints::Endpoint;
 
 const BASE_URL: &str = "https://api.straico.com";
 
@@ -10,8 +9,6 @@ const BASE_URL: &str = "https://api.straico.com";
 pub struct NoApiKey;
 /// Represents the state where an API key has been set for the request
 pub struct ApiKeySet;
-/// Represents the state where a payload has been set for the request
-pub struct PayloadSet;
 
 /// Builder for making requests to Straico API endpoints
 ///
@@ -20,7 +17,6 @@ pub struct PayloadSet;
 /// * `Api` - Represents the authentication state (NoApiKey or ApiKeySet)
 /// * `Payload` - Represents the request payload state
 /// * `Response` - The expected response type from the API
-//pub struct StraicoRequestBuilder<Api, Payload, Response>(
 pub struct StraicoRequestBuilder<Api, Payload>(
     pub RequestBuilder,
     pub PhantomData<Payload>,
@@ -68,31 +64,16 @@ impl StraicoClient {
         StraicoClient::default()
     }
 
-    /// Creates a request builder for the new chat endpoint.
-    ///
-    /// This corresponds to `POST /v2/chat/completions` on the Straico API.
-    pub fn chat(self) -> StraicoRequestBuilder<NoApiKey, ChatRequest<ChatMessage>> {
+    /// Creates a request builder for the given endpoint.
+    pub fn request<E: Endpoint>(
+        self,
+        endpoint: &E,
+    ) -> StraicoRequestBuilder<NoApiKey, E::Request> {
+        let url = format!("{}{}", BASE_URL, endpoint.path());
         self.client
-            .post(BASE_URL.to_string() + "/v2/chat/completions")
+            .request(endpoint.method(), &url)
+            .json(endpoint.request_body())
             .into()
-    }
-
-    /// Creates a request builder for listing models.
-    ///
-    /// This corresponds to `GET /v2/models` on the Straico API.
-    pub fn models(self) -> StraicoRequestBuilder<NoApiKey, ()> {
-        self.client.get(BASE_URL.to_string() + "/v2/models").into()
-    }
-
-    /// Creates a request builder for retrieving a single model by ID.
-    ///
-    /// This corresponds to `GET /v2/models/{model_id}` on the Straico API.
-    /// Pass the model ID exactly as returned by the `/v2/models` endpoint
-    /// (for example: `"amazon/nova-lite-v1"`).
-    pub fn model(self, model_id: &str) -> StraicoRequestBuilder<NoApiKey, ()> {
-        let mut url = BASE_URL.to_string() + "/v2/models";
-        url.push_str(model_id);
-        self.client.get(&url).into()
     }
 
     pub fn builder() -> StraicoClientBuilder {
@@ -146,21 +127,6 @@ impl<T> StraicoRequestBuilder<NoApiKey, T> {
     /// A new StraicoRequestBuilder with the ApiKeySet state, preserving the payload and response types
     pub fn bearer_auth<K: Display>(self, api_key: K) -> StraicoRequestBuilder<ApiKeySet, T> {
         self.0.bearer_auth(api_key).into()
-    }
-}
-
-impl<K, T: Serialize> StraicoRequestBuilder<K, T> {
-    /// Sets the JSON payload for the request
-    ///
-    /// # Arguments
-    ///
-    /// * `payload` - The payload to serialize as JSON. Must implement Into<T> where T is the expected payload type.
-    ///
-    /// # Returns
-    ///
-    /// A new StraicoRequestBuilder with the PayloadSet state, preserving the API key and response types
-    pub fn json(self, payload: T) -> StraicoRequestBuilder<K, PayloadSet> {
-        self.0.json(&payload).into()
     }
 }
 
