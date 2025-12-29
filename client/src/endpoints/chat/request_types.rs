@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use super::common_types::{ChatMessage, OpenAiChatMessage};
 
@@ -54,36 +53,7 @@ pub struct OpenAiChatRequest {
     pub tool_choice: Option<OpenAiToolChoice>,
 }
 
-/// Represents a function definition within a tool.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-pub struct OpenAiFunction {
-    /// The name of the function
-    pub name: String,
-    /// A description of what the function does
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    /// The parameters the function accepts, described as a JSON Schema
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parameters: Option<Value>,
-}
-
-/// Represents a tool available to the model.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(rename_all = "lowercase")]
-#[serde(tag = "type", content = "function")]
-pub enum OpenAiTool {
-    Function(OpenAiFunction),
-}
-
-/// Represents a tool choice option.
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
-#[serde(untagged)]
-pub enum OpenAiToolChoice {
-    /// A string value like "none", "auto", or "required"
-    String(String),
-    /// An object specifying a specific tool to use
-    Object(OpenAiTool),
-}
+pub use super::tool_calling::{OpenAiFunction, OpenAiTool, OpenAiToolChoice};
 
 impl ChatRequest<ChatMessage> {
     /// Creates a new ChatRequest builder.
