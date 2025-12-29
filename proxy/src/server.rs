@@ -82,7 +82,7 @@ pub async fn model_handler(
 async fn handle_chat_completion_async<P: ChatProvider>(
     provider: &P,
     openai_request: &OpenAiChatRequest,
-    model: String,
+    model: &str,
     stream: bool,
 ) -> Result<HttpResponse, ProxyError> {
     let response_future = provider.send_request(openai_request)?;
@@ -102,8 +102,8 @@ pub async fn openai_chat_completion(
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, ProxyError> {
     let openai_request = req.into_inner();
-    debug!("{}", serde_json::to_string_pretty(&openai_request.clone())?);
-    let model = openai_request.chat_request.model.clone();
+    debug!("{}", serde_json::to_string_pretty(&openai_request)?);
+    let model_str = openai_request.chat_request.model.as_str();
     let stream = openai_request.stream;
 
     let AppState {
@@ -116,7 +116,7 @@ pub async fn openai_chat_completion(
     // Determine provider type based on model and router configuration
     let provider_type = if router_client.is_some() {
         // Router mode is active - resolve based on model prefix
-        Provider::from_model(&model)?
+        Provider::from_model(model_str)?
     } else {
         // Normal mode - always use Straico regardless of model prefix
         Provider::Straico
@@ -130,7 +130,7 @@ pub async fn openai_chat_completion(
                 key: key.clone(),
                 heartbeat_char: *heartbeat_char,
             };
-            handle_chat_completion_async(&provider, &openai_request, model, stream).await
+            handle_chat_completion_async(&provider, &openai_request, model_str, stream).await
         }
         Provider::Generic(gen_type) => {
             let client = router_client
@@ -142,7 +142,7 @@ pub async fn openai_chat_completion(
                 })?
                 .clone();
             let provider = GenericProvider::new(gen_type, client)?;
-            handle_chat_completion_async(&provider, &openai_request, model, stream).await
+            handle_chat_completion_async(&provider, &openai_request, model_str, stream).await
         }
     }
 }
