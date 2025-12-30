@@ -37,34 +37,41 @@ The proxy can convert between OpenAI format and Straico's API format. Straico's 
 Download the latest release from GitHub for your platform:
 
 #### Linux (GNU)
-```bash
-# Linux x86_64
-curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-linux-gnu.tar.gz | tar -xz
 
-# Linux ARM64
+##### Linux x86_64
+```bash
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-linux-gnu.tar.gz | tar -xz
+```
+
+##### Linux ARM64
+```bash
 curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-linux-gnu.tar.gz | tar -xz
 ```
 
 #### macOS
-```bash
-# macOS x86_64 (Intel)
-curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-apple-darwin.tar.gz | tar xz
 
-# macOS ARM64 (Apple Silicon)
-curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-apple-darwin.tar.gz | tar xz
+##### macOS x86_64 (Intel)
+```bash
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-apple-darwin.tar.gz | tar -xz
+```
+
+##### macOS ARM64 (Apple Silicon)
+```bash
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-apple-darwin.tar.gz | tar -xz
 ```
 
 #### Windows
+
+##### Windows x86_64
 ```powershell
-# Windows x86_64
 Invoke-WebRequest -Uri "https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-pc-windows-msvc.zip" -OutFile "straico-proxy.zip"
 Expand-Archive -Path "straico-proxy.zip" -DestinationPath "."
-# Add to PATH or move straico-proxy.exe to a directory in your PATH
+```
 
-# Windows ARM64
+##### Windows ARM64
+```powershell
 Invoke-WebRequest -Uri "https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-pc-windows-msvc.zip" -OutFile "straico-proxy.zip"
 Expand-Archive -Path "straico-proxy.zip" -DestinationPath "."
-# Add to PATH or move straico-proxy.exe to a directory in your PATH
 ```
 
 #### Manual Download
