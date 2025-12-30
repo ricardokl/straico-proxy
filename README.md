@@ -18,7 +18,7 @@ A proxy server that enables tool calling and streaming for Straico API, with for
 
 The proxy can convert between OpenAI format and Straico's API format. Straico's chat endpoint:
 
-- https://api.straico.com/v2/chat/completions
+- `https://api.straico.com/v2/chat/completions`
 
 ### Available Parameters
 
