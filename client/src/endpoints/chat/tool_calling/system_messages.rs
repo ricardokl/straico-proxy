@@ -1,4 +1,4 @@
-use super::super::common_types::ChatMessage;
+use crate::endpoints::chat::common_types::ChatMessage;
 use super::types::{ModelProvider, OpenAiTool};
 // Note: We use the re-exported error here to match what's expected in the main module
 // once we update the re-exports. For now, we use the local ToolCallingError where appropriate.
