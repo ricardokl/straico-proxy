@@ -9,7 +9,7 @@ A proxy server that enables tool calling and streaming for Straico API, with for
 
 ## Features
 
-- **Tool calling support** for Straico API
+- **Tool calling emulation** for Straico API
 - **Streaming simulation** with heartbeat chunks until response arrives
 - **Format conversions** between OpenAI and Straico API formats
 - Simple configuration through environment variables
