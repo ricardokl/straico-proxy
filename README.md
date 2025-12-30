@@ -2,8 +2,8 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)](https://www.rust-lang.org/)
-[![Release](https://img.shields.io/github/v/release/ricardo-jorge/straico-proxy)](https://github.com/ricardo-jorge/straico-proxy/releases)
-[![Build](https://img.shields.io/github/actions/workflow/status/ricardo-jorge/straico-proxy/release.yml)](https://github.com/ricardo-jorge/straico-proxy/actions)
+[![Release](https://img.shields.io/github/v/release/ricardokl/straico-proxy)](https://github.com/ricardo-jorge/straico-proxy/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/ricardokl/straico-proxy/release.yml)](https://github.com/ricardo-jorge/straico-proxy/actions)
 
 A proxy server that enables tool calling and streaming for Straico API, with format conversions to bridge compatibility gaps. "Mileage may vary" as conversions between different API formats are involved.
 
@@ -36,32 +36,33 @@ The proxy can convert between OpenAI format and Straico's API format. Straico's 
 
 Download the latest release from GitHub for your platform:
 
-#### Linux
+#### Linux (GNU)
 ```bash
 # Linux x86_64
-curl -L https://github.com/ricardo-jorge/straico-proxy/releases/latest/download/straico-proxy-linux-x86_64.tar.gz | tar xz
-sudo mv straico-proxy /usr/local/bin/
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-linux-gnu.tar.gz | tar -xz
 
 # Linux ARM64
-curl -L https://github.com/ricardo-jorge/straico-proxy/releases/latest/download/straico-proxy-linux-arm64.tar.gz | tar xz
-sudo mv straico-proxy /usr/local/bin/
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-linux-gnu.tar.gz | tar -xz
 ```
 
 #### macOS
 ```bash
 # macOS x86_64 (Intel)
-curl -L https://github.com/ricardo-jorge/straico-proxy/releases/latest/download/straico-proxy-darwin-x86_64.tar.gz | tar xz
-sudo mv straico-proxy /usr/local/bin/
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-apple-darwin.tar.gz | tar xz
 
 # macOS ARM64 (Apple Silicon)
-curl -L https://github.com/ricardo-jorge/straico-proxy/releases/latest/download/straico-proxy-darwin-arm64.tar.gz | tar xz
-sudo mv straico-proxy /usr/local/bin/
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-apple-darwin.tar.gz | tar xz
 ```
 
 #### Windows
 ```powershell
 # Windows x86_64
-Invoke-WebRequest -Uri "https://github.com/ricardo-jorge/straico-proxy/releases/latest/download/straico-proxy-windows-x86_64.zip" -OutFile "straico-proxy.zip"
+Invoke-WebRequest -Uri "https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-pc-windows-msvc.zip" -OutFile "straico-proxy.zip"
+Expand-Archive -Path "straico-proxy.zip" -DestinationPath "."
+# Add to PATH or move straico-proxy.exe to a directory in your PATH
+
+# Windows ARM64
+Invoke-WebRequest -Uri "https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-pc-windows-msvc.zip" -OutFile "straico-proxy.zip"
 Expand-Archive -Path "straico-proxy.zip" -DestinationPath "."
 # Add to PATH or move straico-proxy.exe to a directory in your PATH
 ```
@@ -69,7 +70,7 @@ Expand-Archive -Path "straico-proxy.zip" -DestinationPath "."
 #### Manual Download
 
 Or download manually for your platform from:
-https://github.com/ricardo-jorge/straico-proxy/releases/latest
+https://github.com/ricardokl/straico-proxy/releases/latest
 
 ### From Source (Alternative)
 
