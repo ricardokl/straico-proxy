@@ -3,7 +3,6 @@ mod error;
 mod formatters;
 mod parsers;
 mod system_messages;
-mod templates;
 mod types;
 
 pub use conversions::{
