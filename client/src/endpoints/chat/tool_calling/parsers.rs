@@ -188,7 +188,7 @@ pub fn try_parse_moonshot_tool_call(content: &str) -> Option<Vec<ToolCall>> {
 }
 
 /// Dispatches parsing to the appropriate function based on provider and content
-pub fn parse_tool_calls(content: &str, provider: ModelProvider) -> Option<Vec<ToolCall>> {
+pub(super) fn parse_tool_calls(content: &str, provider: ModelProvider) -> Option<Vec<ToolCall>> {
     match provider {
         ModelProvider::Zai => try_parse_xml_tool_call(content)
             .or_else(|| try_parse_json_tool_call(content))

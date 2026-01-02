@@ -89,7 +89,7 @@ pub fn format_json_tool_calls(tool_calls: &[ToolCall]) -> Result<String, ToolCal
     ))
 }
 
-pub fn format_tool_calls(
+pub(super) fn format_tool_calls(
     tool_calls: &[ToolCall],
     provider: ModelProvider,
 ) -> Result<String, ToolCallingError> {
@@ -117,7 +117,7 @@ mod tests {
             },
             index: None,
         }];
-        let formatted = format_tool_calls(&tool_calls, ModelProvider::Qwen).unwrap();
+        let formatted = ModelProvider::Qwen.format_tool_calls(&tool_calls).unwrap();
         assert!(formatted.contains("<tool_call>"));
         assert!(formatted.contains("\"name\":\"test_func\""));
         assert!(formatted.contains("\"arguments\":{\"arg\":\"val\"}"));
@@ -134,7 +134,7 @@ mod tests {
             },
             index: None,
         }];
-        let formatted = format_tool_calls(&tool_calls, ModelProvider::Zai).unwrap();
+        let formatted = ModelProvider::Zai.format_tool_calls(&tool_calls).unwrap();
         assert!(formatted.contains("<tool_call>test_func"));
         assert!(formatted.contains("<arg_key>arg1</arg_key>"));
         assert!(formatted.contains("<arg_value>val1</arg_value>"));
@@ -151,7 +151,9 @@ mod tests {
             },
             index: None,
         }];
-        let formatted = format_tool_calls(&tool_calls, ModelProvider::MoonshotAI).unwrap();
+        let formatted = ModelProvider::MoonshotAI
+            .format_tool_calls(&tool_calls)
+            .unwrap();
         assert!(formatted.contains("<|tool_call_begin|>test_func<|tool_call_argument_begin|>"));
         assert!(formatted.contains("{\"arg\":\"val\"}"));
     }

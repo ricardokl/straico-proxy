@@ -1,6 +1,5 @@
 use super::error::ToolCallingError;
-use super::formatters::format_tool_calls;
-use super::parsers::parse_tool_calls;
+
 use super::types::{ModelProvider, ToolCall};
 use crate::endpoints::chat::common_types::{ChatContent, ChatMessage, OpenAiChatMessage};
 
@@ -12,7 +11,7 @@ pub fn convert_assistant_with_tools_to_straico(
     let mut final_content = content
         .map(|c: ChatContent| c.to_string())
         .unwrap_or_default();
-    let formatted_tools = format_tool_calls(tool_calls, provider)?;
+    let formatted_tools = provider.format_tool_calls(tool_calls)?;
     if !final_content.is_empty() {
         final_content.push_str("\n\n");
     }
@@ -28,7 +27,7 @@ pub fn convert_straico_assistant_to_openai(
     provider: ModelProvider,
 ) -> Result<OpenAiChatMessage, ToolCallingError> {
     let content_str = content.to_string();
-    let mut tool_calls = parse_tool_calls(&content_str, provider);
+    let mut tool_calls = provider.parse_tool_calls(&content_str);
 
     if let Some(ref mut tcs) = tool_calls
         && !tcs.is_empty()

@@ -98,6 +98,48 @@ impl From<&str> for ModelProvider {
     }
 }
 
+impl ModelProvider {
+    pub fn calling_instructions(&self) -> String {
+        match self {
+            ModelProvider::Zai => super::system_messages::zai_calling_instructions(),
+            ModelProvider::Qwen => super::system_messages::qwen_calling_instructions(),
+            ModelProvider::MoonshotAI => super::system_messages::moonshot_calling_instructions(),
+            _ => super::system_messages::json_calling_instructions(),
+        }
+    }
+
+    pub fn format_tool_calls(
+        &self,
+        tool_calls: &[ToolCall],
+    ) -> Result<String, super::error::ToolCallingError> {
+        super::formatters::format_tool_calls(tool_calls, *self)
+    }
+
+    pub fn parse_tool_calls(&self, content: &str) -> Option<Vec<ToolCall>> {
+        super::parsers::parse_tool_calls(content, *self)
+    }
+
+    pub fn format_tool_response(&self, tool_call_id: &str, content: &str) -> String {
+        match self {
+            ModelProvider::Qwen | ModelProvider::Zai => {
+                format!("<tool_response>\n{}\n</tool_response>", content)
+            }
+            ModelProvider::MoonshotAI => {
+                format!("## Return of {}\n{}", tool_call_id, content)
+            }
+            _ => {
+                // JSON format: serialize entire tool message as JSON
+                serde_json::json!({
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": content
+                })
+                .to_string()
+            }
+        }
+    }
+}
+
 /// Represents a function definition within a tool.
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
 pub struct OpenAiFunction {
@@ -238,5 +280,32 @@ mod tests {
                 "arg2": 42
             })
         );
+    }
+
+    #[test]
+    fn test_format_tool_response_qwen() {
+        let provider = ModelProvider::Qwen;
+        let response = provider.format_tool_response("call_123", "result");
+        assert_eq!(response, "<tool_response>\nresult\n</tool_response>");
+    }
+
+    #[test]
+    fn test_format_tool_response_moonshot() {
+        let provider = ModelProvider::MoonshotAI;
+        let response = provider.format_tool_response("call_123", "result");
+        assert_eq!(response, "## Return of call_123\nresult");
+    }
+
+    #[test]
+    fn test_format_tool_response_json() {
+        let provider = ModelProvider::OpenAI;
+        let response = provider.format_tool_response("call_123", "result");
+        let expected = serde_json::json!({
+            "role": "tool",
+            "tool_call_id": "call_123",
+            "content": "result"
+        })
+        .to_string();
+        assert_eq!(response, expected);
     }
 }

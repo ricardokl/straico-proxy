@@ -1,5 +1,5 @@
-use crate::endpoints::chat::common_types::ChatMessage;
 use super::types::{ModelProvider, OpenAiTool};
+use crate::endpoints::chat::common_types::ChatMessage;
 // Note: We use the re-exported error here to match what's expected in the main module
 // once we update the re-exports. For now, we use the local ToolCallingError where appropriate.
 use super::error::ToolCallingError;
@@ -17,7 +17,7 @@ pub fn build_tools_preamble(
 /// Returns tool calling format instructions for the Zai provider.
 ///
 /// Uses XML tags with function name and arg_key/arg_value pairs.
-pub fn zai_calling_instructions() -> String {
+pub(super) fn zai_calling_instructions() -> String {
     r#"# Tool Call Format
 
 ⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
@@ -55,7 +55,7 @@ Example of multiple tool calls:
 /// Returns tool calling format instructions for the Qwen provider.
 ///
 /// Uses JSON objects wrapped in XML tool_call tags.
-pub fn qwen_calling_instructions() -> String {
+pub(super) fn qwen_calling_instructions() -> String {
     r#"# Tool Call Format
 
 ⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
@@ -89,7 +89,7 @@ Example of multiple tool calls:
 /// Returns tool calling format instructions for the MoonshotAI provider.
 ///
 /// Uses special delimiters like <|tool_calls_section_begin|>.
-pub fn moonshot_calling_instructions() -> String {
+pub(super) fn moonshot_calling_instructions() -> String {
     r#"# Tool Call Format
 
 ⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
@@ -112,7 +112,7 @@ Example of multiple tool calls:
 /// Returns default JSON-based tool calling format instructions.
 ///
 /// Uses a JSON array wrapped in <tool_calls> XML tags.
-pub fn json_calling_instructions() -> String {
+pub(super) fn json_calling_instructions() -> String {
     r#"# Tool Call Format
 
 ⚠️ CRITICAL: You MUST use the following exact wrapper syntax. This is not optional.
@@ -167,12 +167,7 @@ pub fn build_tool_system_message(
     functions: &[&super::types::OpenAiFunction],
 ) -> Result<String, ToolCallingError> {
     let preamble = build_tools_preamble(functions)?;
-    let calling_instructions = match provider {
-        ModelProvider::Zai => zai_calling_instructions(),
-        ModelProvider::Qwen => qwen_calling_instructions(),
-        ModelProvider::MoonshotAI => moonshot_calling_instructions(),
-        _ => json_calling_instructions(),
-    };
+    let calling_instructions = provider.calling_instructions();
 
     Ok(format!(
         r###"# Tools
