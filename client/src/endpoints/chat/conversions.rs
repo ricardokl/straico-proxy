@@ -5,6 +5,7 @@ use super::{
     request_types::{ChatRequest, OpenAiChatRequest, StraicoChatRequest},
     response_types::{ChatChoice, OpenAiChatResponse, StraicoChatResponse},
 };
+use log::debug;
 
 // Tool-related helper functions moved to tool_calling submodules
 
@@ -128,14 +129,41 @@ impl TryFrom<StraicoChatResponse> for OpenAiChatResponse {
             })
             .collect::<Result<Vec<ChatChoice<OpenAiChatMessage>>, ChatError>>()?;
 
-        Ok(OpenAiChatResponse {
+        let openai_response = OpenAiChatResponse {
             id: response.response.id,
             object: response.response.object,
             created: response.response.created,
             model: response.response.model,
             choices,
             usage: response.response.usage,
-        })
+        };
+
+        debug!("Model: {}", openai_response.model);
+        for choice in &openai_response.choices {
+            if let OpenAiChatMessage::Assistant {
+                content,
+                tool_calls,
+            } = &choice.message
+            {
+                debug!("Choice {}:", choice.index);
+                let content_str = content
+                    .as_ref()
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "None".to_string());
+                debug!("  Content: {}", content_str);
+
+                let tool_calls_str = tool_calls
+                    .as_ref()
+                    .map(|t| {
+                        serde_json::to_string_pretty(t)
+                            .unwrap_or_else(|_| "Error serializing tool calls".to_string())
+                    })
+                    .unwrap_or_else(|| "None".to_string());
+                debug!("  Tool Calls: {}", tool_calls_str);
+            }
+        }
+
+        Ok(openai_response)
     }
 }
 

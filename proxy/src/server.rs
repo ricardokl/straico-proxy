@@ -7,7 +7,7 @@ use crate::{
 };
 use actix_web::{get, post, web, HttpResponse};
 use futures::TryStreamExt;
-use log::{debug, warn};
+use log::warn;
 use straico_client::client::StraicoClient;
 
 #[derive(Clone)]
@@ -101,7 +101,6 @@ pub async fn openai_chat_completion(
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, ProxyError> {
     let openai_request = req.into_inner();
-    debug!("{}", serde_json::to_string_pretty(&openai_request)?);
 
     let AppState {
         ref client,
