@@ -20,7 +20,10 @@ async fn main() -> anyhow::Result<()> {
                 "Invalid log level '{}': {}. Defaulting to 'info'.",
                 cli.log_level, e
             );
-            Logger::try_with_str("info").unwrap()
+            Logger::try_with_str("info").unwrap_or_else(|e| {
+                eprintln!("Failed to initialize fallback logger: {e}");
+                std::process::exit(1);
+            })
         })
         .write_mode(WriteMode::BufferAndFlush);
 
