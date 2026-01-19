@@ -7,14 +7,68 @@
 
 A proxy server that enables tool calling and streaming for Straico API, with format conversions to bridge compatibility gaps. "Mileage may vary" as conversions between different API formats are involved.
 
-## Features
+<details open>
+<summary><h2>🚀 Quickstart (x86_64)</h2></summary>
+
+Follow these 2 steps for your platform to get started. For more detailed instructions (ARM64, source build, PATH config), see the [detailed sections below](#-advanced-installation).
+
+<details>
+<summary><b>🐧 Linux</b></summary>
+
+1. Download the proxy:
+```bash
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-linux-gnu.tar.gz | tar -xz
+```
+
+2. Run the proxy:
+```bash
+./straico-proxy
+```
+</details>
+
+<details>
+<summary><b>🍎 macOS</b></summary>
+
+1. Download the proxy:
+```bash
+curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-apple-darwin.tar.gz | tar -xz
+```
+
+2. Run the proxy:
+```bash
+./straico-proxy
+```
+</details>
+
+<details>
+<summary><b>🪟 Windows</b></summary>
+
+1. Download the proxy:
+```powershell
+Invoke-WebRequest -Uri "https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-pc-windows-msvc.zip" -OutFile "straico-proxy.zip"
+Expand-Archive -Path "straico-proxy.zip" -DestinationPath "."
+```
+
+2. Run the proxy:
+```powershell
+.\straico-proxy.exe
+```
+</details>
+
+</details>
+
+<details>
+<summary><h2>✨ Features</h2></summary>
 
 - **Tool calling emulation** for Straico API
 - **Streaming simulation** with heartbeat chunks until response arrives
 - **Format conversions** between OpenAI and Straico API formats
+- **HTTPS support** with auto-generated self-signed certificates or custom certificates
 - Simple configuration through environment variables
+</details>
 
-## Straico API
+<details>
+<summary><h2>🔌 Straico API</h2></summary>
 
 The proxy can convert between OpenAI format and Straico's API format. Straico's chat endpoint:
 
@@ -26,82 +80,96 @@ The proxy can convert between OpenAI format and Straico's API format. Straico's 
 - temperature: number
 - max_tokens: number
 - messages: Object with role and content fields
+</details>
 
-## Installation
+<details>
+<summary><h2>📦 Advanced Installation</h2></summary>
 
-### Pre-compiled Binary (Recommended)
+### Pre-compiled Binaries
 
-Download the latest release from GitHub for your platform:
+Download for your specific architecture:
 
 #### Linux (GNU)
-
-##### Linux x86_64
-```bash
-curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-linux-gnu.tar.gz | tar -xz
-```
-
-##### Linux ARM64
-```bash
-curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-linux-gnu.tar.gz | tar -xz
-```
+- [Linux x86_64](https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-linux-gnu.tar.gz)
+- [Linux ARM64](https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-linux-gnu.tar.gz)
 
 #### macOS
-
-##### macOS x86_64 (Intel)
-```bash
-curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-apple-darwin.tar.gz | tar -xz
-```
-
-##### macOS ARM64 (Apple Silicon)
-```bash
-curl -L https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-apple-darwin.tar.gz | tar -xz
-```
+- [macOS x86_64 (Intel)](https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-apple-darwin.tar.gz)
+- [macOS ARM64 (Apple Silicon)](https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-apple-darwin.tar.gz)
 
 #### Windows
+- [Windows x86_64](https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-pc-windows-msvc.zip)
+- [Windows ARM64](https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-pc-windows-msvc.zip)
 
-##### Windows x86_64
-```powershell
-Invoke-WebRequest -Uri "https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-x86_64-pc-windows-msvc.zip" -OutFile "straico-proxy.zip"
-Expand-Archive -Path "straico-proxy.zip" -DestinationPath "."
-```
-
-##### Windows ARM64
-```powershell
-Invoke-WebRequest -Uri "https://github.com/ricardokl/straico-proxy/releases/latest/download/straico-proxy-aarch64-pc-windows-msvc.zip" -OutFile "straico-proxy.zip"
-Expand-Archive -Path "straico-proxy.zip" -DestinationPath "."
-```
-
-#### Manual Download
-
-Or download manually for your platform from:
-https://github.com/ricardokl/straico-proxy/releases/latest
-
-### From Source (Alternative)
-
-If you prefer to compile from source or need a specific version:
+### From Source
 
 ```bash
 cargo install --path ./proxy/
 ```
+</details>
 
-## Usage
+<details>
+<summary><h2>🛠️ Usage</h2></summary>
 
-Start the proxy server for Straico API with tool calling and streaming:
-
+### HTTP Mode (Default)
 ```bash
 straico-proxy
 ```
 
-## API Keys
+### HTTPS Mode with Auto-Generated Certificate
+```bash
+straico-proxy --https
+```
+
+### HTTPS Mode with Custom Certificates
+```bash
+straico-proxy --https --cert /path/to/cert.pem --key /path/to/key.pem
+```
+
+### Additional Options
+```bash
+straico-proxy --help
+```
+
+Common options:
+- `--host <HOST>` - Host address to bind to (default: 127.0.0.1)
+- `--port <PORT>` - Port to listen on (default: 8000)
+- `--https` - Enable HTTPS mode
+- `--cert <PATH>` - Path to TLS certificate file (PEM format)
+- `--key <PATH>` - Path to TLS private key file (PEM format)
+- `--router` - Enable multi-provider routing mode
+- `--log-level <LEVEL>` - Set log level (trace, debug, info, warn, error)
+</details>
+
+<details>
+<summary><h2>🌐 Global Path Configuration</h2></summary>
+
+To run `straico-proxy` from anywhere, add the binary to your system PATH.
+
+### Linux/macOS
+Move the binary to `/usr/local/bin`:
+```bash
+sudo mv straico-proxy /usr/local/bin/
+```
+
+### Windows
+1. Create a folder for your binaries (e.g., `C:\bin`).
+2. Move `straico-proxy.exe` there.
+3. Add `C:\bin` to your Environment Variables under "Path".
+</details>
+
+<details>
+<summary><h2>🔑 API Keys</h2></summary>
 
 Set your Straico API key via environment variable:
 
 - `STRAICO_API_KEY` - For Straico requests
+</details>
 
-## Example Request
+<details>
+<summary><h2>📝 Example Request</h2></summary>
 
 ### Basic Chat
-
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -114,7 +182,6 @@ curl -X POST http://localhost:8000/v1/chat/completions \
 ```
 
 ### Tool Calling
-
 ```bash
 curl -X POST http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
@@ -125,39 +192,16 @@ curl -X POST http://localhost:8000/v1/chat/completions \
         "role": "system",
         "content": "You are a weather assistant. Use the get_weather function to retrieve weather information for a given location."
       },
-      {
-        "role": "user",
-        "content": "What\'s the weather like in New York today?"
-      }
+      ...
     ],
-    "tools": [
-      {
-        "type": "function",
-        "function": {
-          "name": "get_weather",
-          "description": "Get the current weather for a location",
-          "parameters": {
-            "type": "object",
-            "properties": {
-              "location": {
-                "type": "string",
-                "description": "The city and state, e.g. San Francisco, CA"
-              },
-              "unit": {
-                "type": "string",
-                "enum": ["celsius", "fahrenheit"],
-                "description": "The unit of temperature to use. Defaults to fahrenheit."
-              }
-            },
-            "required": ["location"]
-          }
-        }
-      }
-    ],
+    "tools": [...],
     "tool_choice": "auto",
     "max_completion_tokens": 4096
   }'
 ```
+</details>
+
 ## License
 
 MIT
+
