@@ -1,8 +1,7 @@
 use crate::streaming::HeartbeatChar;
 use crate::{
     error::ProxyError,
-    provider::{ChatProvider, GenericProvider, StraicoProvider},
-    router::Provider,
+    provider::{ChatProvider, StraicoProvider},
     types::OpenAiChatRequest,
 };
 use actix_web::{get, post, web, HttpResponse};
@@ -14,7 +13,6 @@ use straico_client::client::StraicoClient;
 pub struct AppState {
     pub client: StraicoClient,
     pub key: String,
-    pub router_client: Option<reqwest::Client>,
     pub heartbeat_char: HeartbeatChar,
 }
 
@@ -105,41 +103,13 @@ pub async fn openai_chat_completion(
     let AppState {
         ref client,
         ref key,
-        ref router_client,
         ref heartbeat_char,
     } = &*data.into_inner();
 
-    // Determine provider type based on model and router configuration
-    let model_str = openai_request.chat_request.model.as_str();
-    let provider_type = if router_client.is_some() {
-        // Router mode is active - resolve based on model prefix
-        Provider::from_model(model_str)?
-    } else {
-        // Normal mode - always use Straico regardless of model prefix
-        Provider::Straico
+    let provider = StraicoProvider {
+        client: client.clone(),
+        key: key.clone(),
+        heartbeat_char: *heartbeat_char,
     };
-
-    // Dispatch to the appropriate monomorphized function based on provider type
-    match provider_type {
-        Provider::Straico => {
-            let provider = StraicoProvider {
-                client: client.clone(),
-                key: key.clone(),
-                heartbeat_char: *heartbeat_char,
-            };
-            handle_chat_completion_async(&provider, openai_request).await
-        }
-        Provider::Generic(gen_type) => {
-            let client = router_client
-                .as_ref()
-                .ok_or_else(|| {
-                    ProxyError::ServerConfiguration(
-                        "Router client is not configured for generic provider".to_string(),
-                    )
-                })?
-                .clone();
-            let provider = GenericProvider::new(gen_type, client)?;
-            handle_chat_completion_async(&provider, openai_request).await
-        }
-    }
+    handle_chat_completion_async(&provider, openai_request).await
 }

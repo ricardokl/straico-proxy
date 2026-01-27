@@ -70,10 +70,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting Straico proxy server...");
     info!("Server is running at http://{addr}");
 
-    if cli.router {
-        info!("Router mode enabled. Supported providers: straico, sambanova, cerebras, groq");
-        info!("Requests will be routed based on model prefix (e.g., 'groq/llama-3.1-70b')");
-    }
+
 
     info!("Completions endpoint is at /v1/chat/completions");
 
@@ -87,7 +84,6 @@ async fn main() -> anyhow::Result<()> {
     HttpServer::new(move || {
         let app_state = server::AppState {
             client: client.clone(),
-            router_client: cli.router.then(reqwest::Client::new),
             key: api_key.clone(),
             heartbeat_char: cli.heartbeat_char,
         };

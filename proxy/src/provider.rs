@@ -1,12 +1,12 @@
 use crate::{
     error::ProxyError,
-    router::{GenericProviderType, Provider},
+    router::Provider,
     streaming::{CompletionStream, HeartbeatChar, SseChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
 use actix_web::HttpResponse;
 use bytes::Bytes;
-use futures::{future, stream, FutureExt, StreamExt, TryFutureExt, TryStreamExt};
+use futures::{future, stream, FutureExt, StreamExt, TryFutureExt};
 use std::future::Future;
 use std::time::{SystemTime, UNIX_EPOCH};
 use straico_client::client::StraicoClient;
@@ -113,78 +113,7 @@ impl ChatProvider for StraicoProvider {
     }
 }
 
-/// Provider implementation for generic router-backed providers.
-#[derive(Clone)]
-pub struct GenericProvider {
-    pub provider: GenericProviderType,
-    pub client: reqwest::Client,
-    pub api_key: String,
-}
 
-impl GenericProvider {
-    pub fn new(provider: GenericProviderType, client: reqwest::Client) -> Result<Self, ProxyError> {
-        let provider_kind = Provider::Generic(provider);
-        let api_key = std::env::var(provider_kind.env_var_name()).map_err(|_| {
-            ProxyError::ServerConfiguration(format!(
-                "API key not found for provider: {}. Set {} environment variable.",
-                provider_kind,
-                provider_kind.env_var_name()
-            ))
-        })?;
-
-        Ok(Self {
-            provider,
-            client,
-            api_key,
-        })
-    }
-}
-
-impl ChatProvider for GenericProvider {
-    fn provider_kind(&self) -> Provider {
-        Provider::Generic(self.provider)
-    }
-
-    fn send_request(
-        &self,
-        request: OpenAiChatRequest,
-    ) -> Result<impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static, ProxyError>
-    {
-        let provider = self.provider_kind();
-
-        Ok(self
-            .client
-            .post(provider.base_url())
-            .bearer_auth(&self.api_key)
-            .json(&request)
-            .send())
-    }
-
-    fn parse_non_streaming(
-        &self,
-        response: reqwest::Response,
-    ) -> impl Future<Output = Result<serde_json::Value, ProxyError>> {
-        let provider = self.provider_kind();
-
-        // Chain the asynchronous operations using combinators to avoid `async` and `Box`.
-        // This keeps the implementation zero-alloc and consistent with `StraicoProvider`.
-        map_common_non_streaming_errors(response, Some(provider)).and_then(|response| {
-            // Chain the next async call, `.json()`.
-            // Map its `reqwest::Error` to our `ProxyError` to satisfy the chain.
-            response
-                .json::<serde_json::Value>()
-                .map_err(ProxyError::from)
-        })
-    }
-
-    fn create_streaming_response(
-        &self,
-        _model: &str,
-        response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
-    ) -> Result<HttpResponse, ProxyError> {
-        Ok(create_generic_streaming_response(response_future))
-    }
-}
 
 /// Safely gets the current Unix timestamp, with fallback for edge cases.
 fn get_current_timestamp() -> u64 {
@@ -245,28 +174,15 @@ fn create_straico_streaming_response(
         .streaming(response_stream))
 }
 
-fn create_generic_streaming_response(
-    future_response: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
-) -> HttpResponse {
-    let stream = future_response
-        .map_ok(|resp| resp.bytes_stream().map_err(ProxyError::from))
-        .map_err(ProxyError::from)
-        .try_flatten_stream();
 
-    HttpResponse::Ok()
-        .content_type("text/event-stream")
-        .streaming(stream)
-}
 
 async fn map_common_non_streaming_errors(
     response: reqwest::Response,
-    provider: Option<Provider>,
+    _provider: Option<Provider>,
 ) -> Result<reqwest::Response, ProxyError> {
     let status = response.status();
 
-    let provider_name = provider
-        .map(|p| p.to_string())
-        .unwrap_or_else(|| "straico".to_string());
+    let provider_name = "straico";
 
     // Map upstream 429 responses into a structured rate-limit error
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
