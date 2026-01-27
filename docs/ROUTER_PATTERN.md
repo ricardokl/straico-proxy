@@ -1,145 +1,124 @@
-# Router Pattern
+# Straico-Only Architecture
 
-## Model Format
+## Overview
 
-Models use `<provider>/<model-name>` format:
+As of v0.3.2, the proxy has been simplified to support **Straico only**. The multi-provider router functionality has been removed to reduce complexity while maintaining full Straico support.
 
-- `groq/llama-3.1-70b` → Groq API
-- `cerebras/llama3.3` → Cerebras API
-- `sambanova/Meta-Llama-3.1` → SambaNova API
-- `llama-3.1-70b` → Straico (no prefix, default)
+## Supported Models
 
-## Provider Types
+All Straico models are supported. Examples:
+
+- `llama-3.1-70b`
+- `gpt-4o`
+- `claude-3-5-sonnet`
+- `amazon/nova-lite-v1`
+- Any model available via Straico API
+
+## Provider Implementation
+
+The proxy uses a single `StraicoProvider` implementation:
 
 ```rust
-pub enum Provider {
-    Straico,
-    Generic(GenericProviderType),
+pub struct StraicoProvider {
+    pub client: StraicoClient,
+    pub key: String,
+    pub heartbeat_char: HeartbeatChar,
 }
 
-pub enum GenericProviderType {
-    SambaNova,
-    Cerebras,
-    Groq,
+impl StraicoProvider {
+    pub fn send_request(&self, request: OpenAiChatRequest)
+        -> Result<impl Future, ProxyError>;
+
+    pub fn parse_non_streaming(&self, response: reqwest::Response)
+        -> impl Future<Output = Result<serde_json::Value, ProxyError>>;
+
+    pub fn create_streaming_response(
+        &self,
+        model: &str,
+        response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
+    ) -> Result<HttpResponse, ProxyError>;
 }
 ```
 
-## Parsing Logic
+## Request Flow
 
-`Provider::from_model(model)` extracts prefix:
+```
+Client Request (OpenAI format)
+        ↓
+Format Conversion (OpenAI → Straico)
+        ↓
+Straico API Request
+        ↓
+Response Processing
+        ↓
+Format Conversion (Straico → OpenAI)
+        ↓
+Client Response (OpenAI format)
+```
 
-```rust
-let prefix = model.split('/').next()?;
-match prefix.to_lowercase().as_str() {
-    "groq" => Ok(Provider::Generic(Groq)),
-    "cerebras" => Ok(Provider::Generic(Cerebras)),
-    "sambanova" => Ok(Provider::Generic(SambaNova)),
-    "straico" => Ok(Provider::Straico),
-    _ => Err("Unknown provider"),
+## Configuration
+
+### API Key
+
+Set via CLI or environment variable:
+
+```bash
+# Via CLI
+straico-proxy --api-key "your-key"
+
+# Via environment
+export STRAICO_API_KEY="your-key"
+straico-proxy
+```
+
+### Heartbeat Configuration
+
+Control streaming heartbeat behavior:
+
+```bash
+straico-proxy --heartbeat-char empty    # Default (no content)
+straico-proxy --heartbeat-char zwsp     # Zero-width space
+straico-proxy --heartbeat-char zwnj     # Zero-width non-joiner
+straico-proxy --heartbeat-char wj       # Word joiner
+```
+
+## Streaming Behavior
+
+Straico doesn't support native streaming, so the proxy emulates it:
+
+1. **Initial chunk** - Sent immediately with role "assistant"
+2. **Heartbeat** - Sent every 3 seconds while waiting for response
+3. **Response chunk** - Full response when Straico API completes
+4. **Done marker** - `[DONE]` to signal stream end
+
+This provides a streaming experience while waiting for the API response.
+
+## Error Handling
+
+Errors are mapped to OpenAI-compatible format:
+
+```json
+{
+  "error": {
+    "message": "Rate limited by Straico API",
+    "type": "rate_limit_error",
+    "code": "rate_limit_exceeded"
+  }
 }
 ```
 
-## Provider Metadata
+Common error mappings:
+- 429 → `rate_limit_error`
+- 401/403 → `authentication_error` / `permission_error`
+- 4xx/5xx → `api_error`
 
-### Base URLs
+## Future Enhancements
 
-| Provider | Base URL |
-|----------|-----------|
-| Straico | `https://api.straico.com/v2` |
-| Groq | `https://api.groq.com/openai/v1/chat/completions` |
-| Cerebras | `https://api.cerebras.ai/v1/chat/completions` |
-| SambaNova | `https://api.sambanova.ai/v1/chat/completions` |
+To add multi-provider support in the future:
 
-### Environment Variables
+1. Restore `ChatProvider` trait
+2. Implement `GenericProvider` for other APIs
+3. Add provider detection logic
+4. Update request routing
 
-| Provider | Env Var |
-|----------|----------|
-| Straico | `STRAICO_API_KEY` |
-| Groq | `GROQ_API_KEY` |
-| Cerebras | `CEREBRAS_API_KEY` |
-| SambaNova | `SAMBANOVA_API_KEY` |
-
-## Request Routing
-
-### Router Mode
-
-Enabled via `--router` flag:
-
-```rust
-let provider_type = if router_client.is_some() {
-    Provider::from_model(model_str)?    // Parse from prefix
-} else {
-    Provider::Straico                    // Always Straico
-};
-
-match provider_type {
-    Provider::Straico => handle_with_straico(request).await,
-    Provider::Generic(gen_type) => handle_with_generic(gen_type, request).await,
-}
-```
-
-### Provider Dispatch
-
-**StraicoProvider:**
-- Uses `StraicoClient`
-- Converts OpenAI ↔ Straico formats
-- Emulates streaming with heartbeat
-- Reads API key from `AppState.key`
-
-**GenericProvider:**
-- Uses `reqwest::Client`
-- Passes OpenAI format through
-- Streams upstream SSE directly
-- Reads API key from provider-specific env var
-
-## Adding a New Provider
-
-1. Add variant to `GenericProviderType`
-2. Add `base_url()` match arm
-3. Add `env_var_name()` match arm
-4. Update `from_model()` parser
-
-Example:
-```rust
-// Add variant
-pub enum GenericProviderType {
-    // ...
-    NewProvider,
-}
-
-// Add base URL
-impl GenericProviderType {
-    pub fn base_url(&self) -> &'static str {
-        match self {
-            // ...
-            NewProvider => "https://api.new.com/v1/chat/completions",
-        }
-    }
-}
-
-// Add env var
-impl Provider {
-    pub fn env_var_name(&self) -> &'static str {
-        match self {
-            Provider::Generic(p) => match p {
-                // ...
-                NewProvider => "NEW_PROVIDER_API_KEY",
-            },
-        }
-    }
-}
-```
-
-## Design Rationale
-
-### Why Model Prefix Pattern?
-
-- **Explicit**: Provider visible in model name
-- **Simple**: No separate routing config
-- **OpenAI-compatible**: Many clients already use this format
-- **Stateless**: Request-based routing
-
-### Why Separate Clients?
-
-- **StraicoClient**: Type-safe, format conversions, tool calling
-- **reqwest::Client**: Generic, pass-through, supports streaming
+See git history for previous multi-provider implementation.

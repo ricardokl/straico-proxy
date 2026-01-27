@@ -70,8 +70,6 @@ async fn main() -> anyhow::Result<()> {
     info!("Starting Straico proxy server...");
     info!("Server is running at http://{addr}");
 
-
-
     info!("Completions endpoint is at /v1/chat/completions");
 
     let client = StraicoClient::builder()

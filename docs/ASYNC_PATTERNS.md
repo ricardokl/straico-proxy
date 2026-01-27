@@ -67,6 +67,8 @@ let response_stream = initial_chunk
 
 ## Monomorphization
 
+While the proxy now uses a single concrete `StraicoProvider` type, the patterns shown here are useful for understanding how the code was structured and can be applied if multi-provider support is added in the future.
+
 Generic functions generate specialized code at compile time:
 
 ```rust
@@ -74,12 +76,12 @@ async fn handle<P: ChatProvider>(provider: &P, request: Request)
     -> Result<HttpResponse, Error>
 ```
 
-Compiler generates:
+Compiler generates specialized versions for each concrete type:
 - `handle::<StraicoProvider>`
-- `handle::<GenericProvider<Groq>>`
+- `handle::<GenericProvider<Groq>>` (if multi-provider is restored)
 - etc.
 
-**Result:** No runtime dispatch, enables inlining.
+**Result:** No runtime dispatch, enables inlining and optimization.
 
 ## Remote Handle Pattern
 

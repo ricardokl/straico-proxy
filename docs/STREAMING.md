@@ -47,15 +47,32 @@ pub struct Delta {
 
 ## Emulated Streaming (Straico)
 
-Straico doesn't support native streaming, so we emulate it:
+Straico doesn't support native streaming, so we emulate it using a future-based pattern:
 
 ### Stream Composition
 
 ```rust
-let response_stream = initial_chunk    // Role: "assistant"
-    .chain(heartbeat)               // Every 3 seconds
-    .chain(straico_response)         // Full response when ready
-    .chain(done);                    // [DONE]
+let (remote, remote_handle) = future_response.remote_handle();
+
+let initial_chunk = stream::once(future::ready(
+    SseChunk::from(CompletionStream::initial_chunk(model, &id, created)).try_into(),
+));
+
+let heartbeat = tokio_stream::StreamExt::throttle(
+    stream::repeat(heartbeat_chunk).map(Ok::<Bytes, ProxyError>),
+    Duration::from_secs(3),
+)
+.take_until(remote);  // Stop when API response arrives
+
+let straico_stream = remote_handle
+    .and_then(reqwest::Response::json::<StraicoChatResponse>)
+    .map(/* ... */)
+    .into_stream();
+
+let response_stream = initial_chunk
+    .chain(heartbeat)
+    .chain(straico_stream)
+    .chain(done);
 ```
 
 ### Timeline
@@ -69,20 +86,16 @@ let response_stream = initial_chunk    // Role: "assistant"
 10s+ → [DONE]
 ```
 
-## Native Streaming (Generic Providers)
+### Key Pattern: Remote Handle
 
-Groq, Cerebras, SambaNova support native streaming:
+The `remote_handle()` pattern is critical for heartbeat management:
 
-```rust
-let stream = future_response
-    .map_ok(|resp| resp.bytes_stream())
-    .try_flatten_stream();  // Pass through upstream SSE
-```
+1. **Split the future** - `let (remote, remote_handle) = future_response.remote_handle();`
+2. **Heartbeat stream** - Repeats every 3 seconds
+3. **Termination signal** - `.take_until(remote)` stops heartbeat when API responds
+4. **Response processing** - `remote_handle` processes the actual response
 
-**Key difference:**
-- No heartbeat (upstream streams naturally)
-- Direct byte passthrough
-- True incremental streaming
+This ensures heartbeats send while waiting, then automatically stop when the response arrives.
 
 ## Heartbeat Configuration
 
@@ -129,16 +142,28 @@ Error chunk format:
 data: {"error":{"message":"...","type":"...","code":"..."}}\n\n
 ```
 
-## Key Differences
+## Implementation Details
 
-| Aspect | Straico (Emulated) | Generic (Native) |
-|---------|---------------------|------------------|
-| Source | Single non-streaming response | Upstream SSE stream |
-| Heartbeat | Every 3 seconds until response | None |
-| Latency | Higher (waits for full response) | Lower (true streaming) |
-| Format conversion | Yes (Straico → OpenAI) | No (pass-through) |
+### Heartbeat Configuration
 
-## Memory Usage
+The heartbeat character can be customized via CLI:
 
-- **Emulated**: Holds full response in memory
-- **Native**: Processes incrementally (~8KB buffer)
+```bash
+straico-proxy --heartbeat-char empty    # Default (no content)
+straico-proxy --heartbeat-char zwsp     # Zero-width space (\u200b)
+straico-proxy --heartbeat-char zwnj     # Zero-width non-joiner (\u200c)
+straico-proxy --heartbeat-char wj       # Word joiner (\u2060)
+```
+
+### Memory Usage
+
+- **Emulated streaming**: Holds full response in memory until ready
+- **Heartbeat overhead**: Minimal (single `Bytes` chunk repeated)
+- **Stream composition**: Zero-copy chaining via `chain()` combinator
+
+### Performance Characteristics
+
+- **Latency**: Higher than native streaming (waits for full API response)
+- **Throughput**: Single response chunk when ready
+- **Client experience**: Streaming appearance via heartbeat keep-alive
+- **Resource usage**: Minimal (no incremental parsing needed)

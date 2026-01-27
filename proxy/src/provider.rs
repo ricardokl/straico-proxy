@@ -1,6 +1,5 @@
 use crate::{
     error::ProxyError,
-    router::Provider,
     streaming::{CompletionStream, HeartbeatChar, SseChunk},
     types::{OpenAiChatRequest, OpenAiChatResponse, StraicoChatResponse},
 };
@@ -14,34 +13,6 @@ use straico_client::StraicoChatRequest;
 use tokio::time::Duration;
 use uuid::Uuid;
 
-/// Trait encapsulating provider-specific behavior for chat completions.
-pub trait ChatProvider {
-    /// Logical provider kind (Straico or a specific generic provider).
-    fn provider_kind(&self) -> Provider;
-
-    /// Build and send the upstream request.
-    fn send_request(
-        &self,
-        request: OpenAiChatRequest,
-    ) -> Result<impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static, ProxyError>;
-
-    /// Parse a non-streaming response into a JSON value.
-    ///
-    /// This keeps error mapping centralized while allowing providers to control
-    /// how successful bodies are interpreted.
-    fn parse_non_streaming(
-        &self,
-        response: reqwest::Response,
-    ) -> impl Future<Output = Result<serde_json::Value, ProxyError>>;
-
-    /// Create a streaming HTTP response from the upstream future.
-    fn create_streaming_response(
-        &self,
-        model: &str,
-        response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
-    ) -> Result<HttpResponse, ProxyError>;
-}
-
 /// Provider implementation for the native Straico backend.
 #[derive(Clone)]
 pub struct StraicoProvider {
@@ -50,12 +21,8 @@ pub struct StraicoProvider {
     pub heartbeat_char: HeartbeatChar,
 }
 
-impl ChatProvider for StraicoProvider {
-    fn provider_kind(&self) -> Provider {
-        Provider::Straico
-    }
-
-    fn send_request(
+impl StraicoProvider {
+    pub fn send_request(
         &self,
         request: OpenAiChatRequest,
     ) -> Result<impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static, ProxyError>
@@ -70,13 +37,13 @@ impl ChatProvider for StraicoProvider {
             .send())
     }
 
-    fn parse_non_streaming(
+    pub fn parse_non_streaming(
         &self,
         response: reqwest::Response,
     ) -> impl Future<Output = Result<serde_json::Value, ProxyError>> {
         // Chain the asynchronous operations using future combinators instead of `async/await`.
         // This avoids heap allocation (`Box`) and the `async` keyword.
-        map_common_non_streaming_errors(response, None)
+        map_common_non_streaming_errors(response)
             .and_then(|response| {
                 // `response.json()` is an asynchronous call, so we chain it with `and_then`.
                 // We use `map_err` to convert its `reqwest::Error` into our `ProxyError`
@@ -104,7 +71,7 @@ impl ChatProvider for StraicoProvider {
             })
     }
 
-    fn create_streaming_response(
+    pub fn create_streaming_response(
         &self,
         model: &str,
         response_future: impl Future<Output = Result<reqwest::Response, reqwest::Error>> + 'static,
@@ -112,8 +79,6 @@ impl ChatProvider for StraicoProvider {
         create_straico_streaming_response(model, response_future, self.heartbeat_char)
     }
 }
-
-
 
 /// Safely gets the current Unix timestamp, with fallback for edge cases.
 fn get_current_timestamp() -> u64 {
@@ -174,15 +139,12 @@ fn create_straico_streaming_response(
         .streaming(response_stream))
 }
 
-
-
 async fn map_common_non_streaming_errors(
     response: reqwest::Response,
-    _provider: Option<Provider>,
 ) -> Result<reqwest::Response, ProxyError> {
     let status = response.status();
 
-    let provider_name = "straico";
+    let provider_name = "Straico";
 
     // Map upstream 429 responses into a structured rate-limit error
     if status == reqwest::StatusCode::TOO_MANY_REQUESTS {

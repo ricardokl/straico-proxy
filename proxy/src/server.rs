@@ -1,9 +1,5 @@
 use crate::streaming::HeartbeatChar;
-use crate::{
-    error::ProxyError,
-    provider::{ChatProvider, StraicoProvider},
-    types::OpenAiChatRequest,
-};
+use crate::{error::ProxyError, provider::StraicoProvider, types::OpenAiChatRequest};
 use actix_web::{get, post, web, HttpResponse};
 use futures::TryStreamExt;
 use log::warn;
@@ -77,8 +73,8 @@ pub async fn model_handler(
 /// Generic handler for chat completions that works with any provider implementing ChatProvider.
 /// The compiler will monomorphize this function for each concrete provider type, generating
 /// specialized code with zero abstraction overhead.
-async fn handle_chat_completion_async<P: ChatProvider>(
-    provider: &P,
+async fn handle_chat_completion_async(
+    provider: &StraicoProvider,
     openai_request: OpenAiChatRequest,
 ) -> Result<HttpResponse, ProxyError> {
     if openai_request.stream {

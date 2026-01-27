@@ -136,23 +136,27 @@ Centralized error handling for upstream responses:
 ```rust
 async fn map_common_non_streaming_errors(
     response: reqwest::Response,
-    provider: Option<Provider>,
 ) -> Result<Response, ProxyError> {
     let status = response.status();
+    let provider_name = "Straico";
 
     if status == TOO_MANY_REQUESTS {
         let retry_after = extract_retry_after(&response);
         return Err(ProxyError::RateLimited {
             retry_after,
-            message: format!("Rate limited by {provider} API"),
+            message: format!("Rate limited by {} API", provider_name),
         });
     }
 
     if status.is_client_error() || status.is_server_error() {
-        return Err(ProxyError::UpstreamError(
+        let body = response.text().await.unwrap_or_default();
+        let message = format!(
+            "{} API returned {} {}",
+            provider_name,
             status.as_u16(),
-            format!("{provider} API returned {status}")
-        ));
+            status.canonical_reason().unwrap_or("")
+        );
+        return Err(ProxyError::UpstreamError(status.as_u16(), message));
     }
 
     Ok(response)

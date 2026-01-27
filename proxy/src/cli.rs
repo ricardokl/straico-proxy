@@ -27,8 +27,6 @@ pub struct Cli {
     #[arg(long, default_value = "info")]
     pub log_level: String,
 
-
-
     /// Heartbeat character type for streaming responses
     #[arg(long, value_enum, default_value = "empty")]
     pub heartbeat_char: HeartbeatChar,

@@ -2,12 +2,12 @@
 
 ## Overview
 
-The proxy crate provides an Actix-web server that routes requests to multiple upstream providers while maintaining OpenAI API compatibility.
+The proxy crate provides an Actix-web server that proxies requests to the Straico API while maintaining OpenAI API compatibility.
 
 ## Server Bootstrap
 
 Server is initialized in `main.rs` with:
-- CLI configuration parsing (host, port, router mode, heartbeat)
+- CLI configuration parsing (host, port, heartbeat character)
 - Logger setup with flexi_logger
 - StraicoClient configuration (connection pooling, timeouts)
 - AppState creation and binding
@@ -20,7 +20,6 @@ Shared state across worker threads:
 pub struct AppState {
     pub client: StraicoClient,        // Straico API client
     pub key: String,                 // API key
-    pub router_client: Option<reqwest::Client>,  // Generic provider client
     pub heartbeat_char: HeartbeatChar,  // Streaming heartbeat type
 }
 ```
@@ -28,69 +27,69 @@ pub struct AppState {
 ## HTTP Handlers
 
 ### Chat Completion
-`server.rs::openai_chat_completion` routes requests based on model prefix:
-- Parse provider from model if router enabled
-- Match provider to create `StraicoProvider` or `GenericProvider`
-- Dispatch to monomorphized `handle_chat_completion_async`
+`server.rs::openai_chat_completion` handles chat completion requests:
+- Validates OpenAI request format
+- Creates `StraicoProvider` instance
+- Dispatches to `handle_chat_completion_async`
+- Returns streaming or non-streaming response
 
 ### Models Handlers
 - `GET /v1/models` - List all models
 - `GET /v1/models/{model_id}` - Get single model details
 
-## Provider Trait
+## Provider Implementation
 
-Core abstraction for multi-provider support:
+`StraicoProvider` handles all Straico API interactions:
 
 ```rust
-#[async_trait]
-pub trait ChatProvider {
-    fn provider_kind(&self) -> Provider;
-    fn send_request(&self, request) -> Result<impl Future, Error>;
-    fn parse_non_streaming(&self, response) -> impl Future;
-    fn create_streaming_response(&self, model, future) -> Result<HttpResponse, Error>;
+pub struct StraicoProvider {
+    pub client: StraicoClient,
+    pub key: String,
+    pub heartbeat_char: HeartbeatChar,
+}
+
+impl StraicoProvider {
+    pub fn send_request(&self, request) -> Result<impl Future, Error>;
+    pub fn parse_non_streaming(&self, response) -> impl Future;
+    pub fn create_streaming_response(&self, model, future) -> Result<HttpResponse, Error>;
 }
 ```
 
-### StraicoProvider
-- Uses `StraicoClient` for requests
-- Converts OpenAI ↔ Straico formats
-- Emulates streaming with heartbeat
+**Responsibilities:**
+- Converts OpenAI ↔ Straico request/response formats
+- Emulates streaming with heartbeat keep-alive
+- Handles error mapping and status code conversion
 - Reads API key from `AppState`
-
-### GenericProvider
-- Uses `reqwest::Client` directly
-- Passes OpenAI format through (no conversion)
-- Streams upstream SSE directly
-- Reads API key from provider-specific env vars
 
 ## Request Flow
 
 ```
-Client Request → Provider Detection → Format Conversion → Upstream API
+Client Request → Format Validation → Straico API Request
                      ↓                      ↓
-              (Router or Straico)    (Provider Trait)
+              (OpenAI format)      (Straico format)
                      ↓                      ↓
-              Response Parsing    ← Streaming/NON
+              Response Parsing    ← Streaming/Non-streaming
                      ↓
               OpenAI Format → Client Response
 ```
 
-## Monomorphization
+## Zero-Cost Async Patterns
 
-Generic handler enables zero-cost abstraction:
+Handler uses future combinators for zero-allocation async:
 
 ```rust
-async fn handle_chat_completion_async<P: ChatProvider>(
-    provider: &P,
+async fn handle_chat_completion_async(
+    provider: &StraicoProvider,
     request: OpenAiChatRequest,
 ) -> Result<HttpResponse, ProxyError>
 ```
 
-Compiler generates specialized versions for each provider type, eliminating runtime dispatch.
+No generic parameters needed - single concrete type eliminates vtable overhead.
 
 ## Key Patterns
 
 - **Zero-alloc async**: Future combinators over async blocks
 - **Error mapping**: Centralized upstream error handling
 - **Stream composition**: Chain initial → heartbeat → response → done
+- **Remote handle pattern**: Split future to control heartbeat termination
 - **Clone on AppState**: Thread-safe sharing across workers
