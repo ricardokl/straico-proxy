@@ -1,4 +1,5 @@
 pub mod cli;
+pub mod debug_middleware;
 pub mod error;
 pub mod provider;
 

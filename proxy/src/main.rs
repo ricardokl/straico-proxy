@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use actix_web::{web, App, HttpResponse, HttpServer};
+use actix_web::{middleware, web, App, HttpResponse, HttpServer};
 use anyhow::Context;
 use clap::Parser;
 use flexi_logger::{Logger, WriteMode};
@@ -86,8 +86,19 @@ async fn main() -> anyhow::Result<()> {
             heartbeat_char: cli.heartbeat_char,
         };
 
-        let app = App::new().app_data(web::Data::new(app_state));
-        app.service(server::openai_chat_completion)
+        App::new()
+            .wrap(middleware::Logger::new(
+                r#"%a "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#,
+            ))
+            .wrap(
+                middleware::Logger::new(
+                    "Request headers: %{Content-Type}i | %{Authorization}i | %{Accept}i",
+                )
+                .log_target("actix_web::middleware::headers"),
+            )
+            .wrap(straico_proxy::debug_middleware::RequestDebugger)
+            .app_data(web::Data::new(app_state))
+            .service(server::openai_chat_completion)
             .service(server::model_handler)
             .default_service(web::to(HttpResponse::NotFound))
             .service(server::models_handler)
