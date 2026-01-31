@@ -12,20 +12,51 @@ use straico_proxy::{cli::Cli, server};
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    // Set up logging
-    let mut logger = Logger::try_with_str(&cli.log_level)
+    // Set up logging with actix-http at error level to catch parse errors
+    let log_spec = format!("{},actix_http::h1::dispatcher=error", &cli.log_level);
+    let mut logger = Logger::try_with_str(&log_spec)
         .unwrap_or_else(|e| {
             // Fallback to a default logger if the given level is invalid
             eprintln!(
                 "Invalid log level '{}': {}. Defaulting to 'info'.",
                 cli.log_level, e
             );
-            Logger::try_with_str("info").unwrap_or_else(|e| {
+            Logger::try_with_str("info,actix_http::h1::dispatcher=error").unwrap_or_else(|e| {
                 eprintln!("Failed to initialize fallback logger: {e}");
                 std::process::exit(1);
             })
         })
-        .write_mode(WriteMode::BufferAndFlush);
+        .write_mode(WriteMode::BufferAndFlush)
+        .format(|w, now, record| {
+            // Intercept actix-http parse errors and add helpful context
+            if record.target() == "actix_http::h1::dispatcher"
+                && record.level() == log::Level::Error
+            {
+                let msg = format!("{}", record.args());
+                if msg.contains("invalid Header") {
+                    // Log the original error first
+                    write!(
+                        w,
+                        "[{}] ERROR [{}] {}",
+                        now.now().format("%Y-%m-%d %H:%M:%S"),
+                        record.target(),
+                        msg
+                    )?;
+                    // Then add our helpful message
+                    straico_proxy::tls_detector::log_https_error();
+                    return Ok(());
+                }
+            }
+            // Default formatting for other messages
+            write!(
+                w,
+                "[{}] {} [{}] {}",
+                now.now().format("%Y-%m-%d %H:%M:%S"),
+                record.level(),
+                record.target(),
+                record.args()
+            )
+        });
 
     logger = logger.log_to_stderr();
 
@@ -66,11 +97,29 @@ async fn main() -> anyhow::Result<()> {
         return Ok(());
     }
 
-    let addr = format!("{}:{}", cli.host, cli.port);
-    info!("Starting Straico proxy server...");
-    info!("Server is running at http://{addr}");
+    let http_addr = format!("{}:{}", cli.host, cli.port);
+    let https_port = cli.https_port.unwrap_or(cli.port + 1);
+    let https_addr = format!("{}:{}", cli.host, https_port);
 
-    info!("Completions endpoint is at /v1/chat/completions");
+    info!("Starting Straico proxy server...");
+    info!("HTTP server running at http://{}", http_addr);
+    info!("HTTPS rejection server running at https://{}", https_addr);
+    info!("Completions endpoint: /v1/chat/completions");
+    info!("\n┌─────────────────────────────────────────────────────────────────┐");
+    info!("│ ✅ HTTPS connections now handled gracefully                      │");
+    info!("│                                                                 │");
+    info!("│ HTTPS clients will receive a proper error message explaining    │");
+    info!("│ that only HTTP is supported.                                    │");
+    info!("│                                                                 │");
+    info!(
+        "│ HTTP:  http://127.0.0.1:{}                                       │",
+        cli.port
+    );
+    info!(
+        "│ HTTPS: https://127.0.0.1:{} (returns error)                      │",
+        https_port
+    );
+    info!("└─────────────────────────────────────────────────────────────────┘");
 
     let client = StraicoClient::builder()
         .pool_max_idle_per_host(25)
@@ -79,7 +128,10 @@ async fn main() -> anyhow::Result<()> {
         .timeout(Duration::from_secs(90))
         .build()?;
 
-    HttpServer::new(move || {
+    // Create TLS config for HTTPS rejection
+    let tls_config = straico_proxy::https_rejector::create_self_signed_cert()?;
+
+    let http_server = HttpServer::new(move || {
         let app_state = server::AppState {
             client: client.clone(),
             key: api_key.clone(),
@@ -87,25 +139,31 @@ async fn main() -> anyhow::Result<()> {
         };
 
         App::new()
-            .wrap(middleware::Logger::new(
-                r#"%a "%r" %s %b "%{Referer}i" "%{User-Agent}i" %T"#,
-            ))
-            .wrap(
-                middleware::Logger::new(
-                    "Request headers: %{Content-Type}i | %{Authorization}i | %{Accept}i",
-                )
-                .log_target("actix_web::middleware::headers"),
-            )
-            .wrap(straico_proxy::debug_middleware::RequestDebugger)
+            .wrap(middleware::Logger::default())
             .app_data(web::Data::new(app_state))
             .service(server::openai_chat_completion)
             .service(server::model_handler)
-            .default_service(web::to(HttpResponse::NotFound))
             .service(server::models_handler)
+            .default_service(web::to(HttpResponse::NotFound))
+    });
+
+    // Bind HTTP server
+    let http_server = http_server
+        .bind(&http_addr)
+        .with_context(|| format!("Failed to bind HTTP to: {}", http_addr))?;
+
+    // Create and bind HTTPS rejection server
+    let https_server = HttpServer::new(|| {
+        App::new().configure(straico_proxy::https_rejector::configure_https_rejector)
     })
-    .bind(&addr)
-    .with_context(|| format!("Failed to bind to address: {addr}"))?
-    .run()
-    .await
-    .context("Failed to run HTTP server")
+    .bind_rustls_0_23(&https_addr, tls_config)
+    .with_context(|| format!("Failed to bind HTTPS to: {}", https_addr))?;
+
+    // Run both servers
+    let http_handle = http_server.run();
+    let https_handle = https_server.run();
+
+    tokio::try_join!(http_handle, https_handle).context("Failed to run servers")?;
+
+    Ok(())
 }

@@ -30,4 +30,8 @@ pub struct Cli {
     /// Heartbeat character type for streaming responses
     #[arg(long, value_enum, default_value = "empty")]
     pub heartbeat_char: HeartbeatChar,
+
+    /// HTTPS port to reject TLS connections with helpful error (default: HTTP port + 1)
+    #[arg(long, env = "STRAICO_PROXY_HTTPS_PORT")]
+    pub https_port: Option<u16>,
 }
